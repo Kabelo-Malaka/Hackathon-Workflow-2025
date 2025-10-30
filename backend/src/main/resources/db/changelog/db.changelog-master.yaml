@@ -48,3 +48,61 @@ databaseChangeLog:
               DROP INDEX IF EXISTS idx_users_username;
               DROP INDEX IF EXISTS idx_users_email;
               DROP TABLE IF EXISTS users;
+
+  # Story 1.4: Authentication & Session Management
+
+  # Changeset 003: Seed admin user for testing
+  - changeSet:
+      id: 003-seed-admin-user
+      author: developer
+      comment: "Insert default admin user with BCrypt-hashed password for testing (username: admin, password: password)"
+      changes:
+        - sql:
+            sql: |
+              INSERT INTO users (id, username, email, password_hash, role, is_active, created_at)
+              VALUES (
+                gen_random_uuid(),
+                'admin',
+                'admin@magnab.com',
+                '$2a$10$dXJ3SW6G7P50lGmMkkmwe.20cQQubK3.HZWzG3YB1tlRy.fqvM/BG',
+                'ADMINISTRATOR',
+                true,
+                CURRENT_TIMESTAMP
+              );
+      rollback:
+        - sql:
+            sql: DELETE FROM users WHERE username = 'admin';
+
+  # Changeset 004: Create audit_events table
+  - changeSet:
+      id: 004-create-audit-events-table
+      author: developer
+      comment: "Create audit_events table for comprehensive audit logging"
+      changes:
+        - sql:
+            sql: |
+              CREATE TABLE audit_events (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID,
+                action_type VARCHAR(100) NOT NULL,
+                entity_type VARCHAR(50),
+                entity_id UUID,
+                description VARCHAR(500),
+                metadata TEXT,
+                timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+              );
+
+              CREATE INDEX idx_audit_user_id ON audit_events(user_id);
+              CREATE INDEX idx_audit_action_type ON audit_events(action_type);
+              CREATE INDEX idx_audit_entity_type ON audit_events(entity_type);
+              CREATE INDEX idx_audit_entity_id ON audit_events(entity_id);
+              CREATE INDEX idx_audit_timestamp ON audit_events(timestamp);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_audit_timestamp;
+              DROP INDEX IF EXISTS idx_audit_entity_id;
+              DROP INDEX IF EXISTS idx_audit_entity_type;
+              DROP INDEX IF EXISTS idx_audit_action_type;
+              DROP INDEX IF EXISTS idx_audit_user_id;
+              DROP TABLE IF EXISTS audit_events;
