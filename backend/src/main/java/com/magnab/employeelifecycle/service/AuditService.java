@@ -63,6 +63,25 @@ public class AuditService {
         }
     }
 
+    @Async
+    @Transactional
+    public void logUserAction(UUID userId, String actionType, String description, String metadata) {
+        try {
+            AuditEvent event = new AuditEvent();
+            event.setUserId(userId);
+            event.setActionType(actionType);
+            event.setEntityType("USER");
+            event.setDescription(description);
+            event.setMetadata(metadata);
+            event.setTimestamp(LocalDateTime.now());
+
+            auditEventRepository.save(event);
+            log.info("User action logged: {} for user {}", actionType, userId);
+        } catch (Exception e) {
+            log.error("Failed to log user action", e);
+        }
+    }
+
     private String buildJsonMetadata(String username, String ipAddress) {
         StringBuilder json = new StringBuilder("{");
         json.append("\"username\":\"").append(escapeJson(username)).append("\"");

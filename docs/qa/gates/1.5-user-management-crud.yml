@@ -1,0 +1,89 @@
+# Quality Gate Decision - Story 1.5: User Management CRUD
+schema: 1
+story: "1.5"
+story_title: "User Management CRUD"
+gate: "CONCERNS"
+status_reason: "Implementation is functionally complete with all 10 ACs met, but has security concerns: CSRF disabled for /api/users/** endpoints and no password complexity validation. These are acceptable for MVP/Swagger testing but must be addressed before production."
+reviewer: "Quinn (Test Architect)"
+updated: "2025-10-30T21:35:00Z"
+
+waiver: { active: false }
+
+top_issues:
+  - id: "SEC-001"
+    severity: medium
+    finding: "CSRF protection disabled for /api/users/** endpoints in SecurityConfig.java"
+    suggested_action: "Re-enable CSRF for production deployment or implement token-based authentication. Current configuration is acceptable for MVP/Swagger testing only."
+    suggested_owner: "dev"
+    refs: ["backend/src/main/java/com/magnab/employeelifecycle/config/SecurityConfig.java:45"]
+
+  - id: "SEC-002"
+    severity: medium
+    finding: "No password complexity validation - passwords can be weak (e.g., single character)"
+    suggested_action: "Add @Pattern validation to CreateUserRequest.password and ChangePasswordRequest.newPassword with regex requiring minimum 8 characters, uppercase, lowercase, and digit"
+    suggested_owner: "dev"
+    refs:
+      - "backend/src/main/java/com/magnab/employeelifecycle/dto/request/CreateUserRequest.java:19"
+      - "backend/src/main/java/com/magnab/employeelifecycle/dto/request/ChangePasswordRequest.java:12"
+
+  - id: "PERF-001"
+    severity: low
+    finding: "No pagination on getAllUsers() endpoint - returns all users in memory"
+    suggested_action: "Add pagination support using Spring Data's Pageable for production scalability"
+    suggested_owner: "dev"
+    refs: ["backend/src/main/java/com/magnab/employeelifecycle/service/UserService.java:80-86"]
+
+quality_score: 70
+expires: "2025-11-13T00:00:00Z"
+
+evidence:
+  tests_reviewed: 0  # Manual testing only - Story 1.8 will add automated tests
+  risks_identified: 3
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    ac_gaps: []
+
+nfr_validation:
+  security:
+    status: CONCERNS
+    notes: "BCrypt password hashing ✓, Role-based access control ✓, No sensitive data logging ✓, BUT: CSRF disabled for /api/users/**, no password complexity validation, no rate limiting on user creation"
+  performance:
+    status: CONCERNS
+    notes: "Read-only transactions ✓, Async audit logging ✓, Proper indexes ✓, BUT: No pagination on getAllUsers() - potential memory issue with large datasets"
+  reliability:
+    status: PASS
+    notes: "Proper exception handling ✓, Soft delete pattern ✓, Transactional operations ✓, Comprehensive audit logging ✓"
+  maintainability:
+    status: PASS
+    notes: "Clean architecture ✓, Constructor injection ✓, DTOs at boundaries ✓, Specific exceptions ✓, Clear logging ✓, Code follows all coding standards ✓"
+
+recommendations:
+  immediate:
+    - action: "Re-enable CSRF protection for /api/users/** before production deployment"
+      refs: ["backend/src/main/java/com/magnab/employeelifecycle/config/SecurityConfig.java:45"]
+    - action: "Add password complexity validation with @Pattern annotation (min 8 chars, uppercase, lowercase, digit)"
+      refs:
+        - "backend/src/main/java/com/magnab/employeelifecycle/dto/request/CreateUserRequest.java:19"
+        - "backend/src/main/java/com/magnab/employeelifecycle/dto/request/ChangePasswordRequest.java:12"
+
+  future:
+    - action: "Add pagination support to getAllUsers() using Spring Data Pageable"
+      refs: ["backend/src/main/java/com/magnab/employeelifecycle/service/UserService.java:80-86"]
+    - action: "Consider adding rate limiting on user creation endpoint to prevent DoS"
+      refs: ["backend/src/main/java/com/magnab/employeelifecycle/controller/UserController.java:30-34"]
+    - action: "Consider using ModelMapper or MapStruct for DTO mapping instead of manual mapping"
+      refs: ["backend/src/main/java/com/magnab/employeelifecycle/service/UserService.java:194-204"]
+
+refactoring_performed:
+  - file: "backend/src/main/java/com/magnab/employeelifecycle/service/UserService.java"
+    change: "Fixed getCurrentUser() to throw ResourceNotFoundException instead of generic RuntimeException"
+    line: 191
+  - file: "backend/src/main/java/com/magnab/employeelifecycle/service/UserService.java"
+    change: "Added TODO comment for pagination support on getAllUsers()"
+    line: 82
+  - file: "backend/src/main/java/com/magnab/employeelifecycle/dto/request/CreateUserRequest.java"
+    change: "Added TODO comment about password complexity validation"
+    line: 19
+  - file: "backend/src/main/java/com/magnab/employeelifecycle/dto/request/ChangePasswordRequest.java"
+    change: "Added TODO comment about password complexity validation"
+    line: 12
