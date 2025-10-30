@@ -107,6 +107,51 @@ docker-compose down -v
 
 **Warning**: This will delete all database data!
 
+## Database Schema
+
+The application uses **PostgreSQL 17.2** with **Liquibase 4.25.1** for database migration management.
+
+### Schema Management
+
+- All database changes are versioned using Liquibase changesets
+- Migrations run automatically on application startup
+- Schema history is tracked in the `DATABASECHANGELOG` table
+- Each changeset includes rollback scripts for safe schema evolution
+
+### View Current Schema Version
+
+Connect to the PostgreSQL database and query the changelog:
+
+```bash
+docker exec -it hackathon-workflow-2025-postgres-1 psql -U postgres -d employee_lifecycle
+```
+
+Then run:
+```sql
+SELECT id, author, filename, dateexecuted FROM databasechangelog ORDER BY dateexecuted;
+```
+
+### Rollback Migrations
+
+To rollback database changes (use with caution):
+
+```bash
+cd backend
+mvn liquibase:rollback -Dliquibase.rollbackCount=1
+```
+
+**Note**: Rollback requires Maven to be installed and configured with database connection details.
+
+### Current Schema
+
+**Tables**:
+- `users` - System users with role-based access control (HR_ADMIN, LINE_MANAGER, TECH_SUPPORT, ADMINISTRATOR)
+
+**Enumerations**:
+- `user_role` - User role types for RBAC
+
+All business tables include audit columns (`created_at`, `created_by`, `updated_at`, `updated_by`) for comprehensive tracking.
+
 ## Project Structure
 
 ```

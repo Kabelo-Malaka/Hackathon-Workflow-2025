@@ -1,3 +1,50 @@
 databaseChangeLog:
-  # Database schema migrations will be added starting with Story 1.3
-  # This is a placeholder file to ensure Liquibase is configured correctly
+  # Story 1.3: Database Schema Foundation & Liquibase Setup
+
+  # Changeset 001: Create user_role ENUM type
+  - changeSet:
+      id: 001-create-user-role-enum
+      author: developer
+      comment: "Create PostgreSQL ENUM type for user roles (HR_ADMIN, LINE_MANAGER, TECH_SUPPORT, ADMINISTRATOR)"
+      changes:
+        - sql:
+            sql: |
+              CREATE TYPE user_role AS ENUM (
+                'HR_ADMIN',
+                'LINE_MANAGER',
+                'TECH_SUPPORT',
+                'ADMINISTRATOR'
+              );
+      rollback:
+        - sql:
+            sql: DROP TYPE IF EXISTS user_role CASCADE;
+
+  # Changeset 002: Create users table with audit columns and indexes
+  - changeSet:
+      id: 002-create-users-table
+      author: developer
+      comment: "Create users table with UUID primary key, role-based access control, soft delete support, and audit columns"
+      changes:
+        - sql:
+            sql: |
+              CREATE TABLE users (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                username VARCHAR(50) NOT NULL UNIQUE,
+                email VARCHAR(100) NOT NULL UNIQUE,
+                password_hash VARCHAR(255) NOT NULL,
+                role user_role NOT NULL,
+                is_active BOOLEAN NOT NULL DEFAULT true,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_by UUID,
+                updated_at TIMESTAMP,
+                updated_by UUID
+              );
+
+              CREATE INDEX idx_users_email ON users(email);
+              CREATE INDEX idx_users_username ON users(username);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_users_username;
+              DROP INDEX IF EXISTS idx_users_email;
+              DROP TABLE IF EXISTS users;
