@@ -106,3 +106,170 @@ databaseChangeLog:
               DROP INDEX IF EXISTS idx_audit_action_type;
               DROP INDEX IF EXISTS idx_audit_user_id;
               DROP TABLE IF EXISTS audit_events;
+
+  # Story 2.1: Workflow Template Data Model
+
+  # Changeset 005: Create workflow_type and workflow_status ENUM types
+  - changeSet:
+      id: 005-create-workflow-enums
+      author: developer
+      comment: "Create PostgreSQL ENUM types for workflow_type (ONBOARDING, OFFBOARDING) and workflow_status (INITIATED, IN_PROGRESS, BLOCKED, COMPLETED)"
+      changes:
+        - sql:
+            sql: |
+              CREATE TYPE workflow_type AS ENUM (
+                'ONBOARDING',
+                'OFFBOARDING'
+              );
+
+              CREATE TYPE workflow_status AS ENUM (
+                'INITIATED',
+                'IN_PROGRESS',
+                'BLOCKED',
+                'COMPLETED'
+              );
+      rollback:
+        - sql:
+            sql: |
+              DROP TYPE IF EXISTS workflow_status CASCADE;
+              DROP TYPE IF EXISTS workflow_type CASCADE;
+
+  # Changeset 006: Create workflow_templates table
+  - changeSet:
+      id: 006-create-workflow-templates-table
+      author: developer
+      comment: "Create workflow_templates table with workflow_type enum, audit columns, and foreign key to users"
+      changes:
+        - sql:
+            sql: |
+              CREATE TABLE workflow_templates (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                template_name VARCHAR(100) NOT NULL UNIQUE,
+                workflow_type workflow_type NOT NULL,
+                description TEXT,
+                default_status workflow_status NOT NULL DEFAULT 'INITIATED',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_by UUID,
+                updated_at TIMESTAMP,
+                updated_by UUID,
+                CONSTRAINT fk_workflow_templates_created_by FOREIGN KEY (created_by) REFERENCES users(id),
+                CONSTRAINT fk_workflow_templates_updated_by FOREIGN KEY (updated_by) REFERENCES users(id)
+              );
+
+              CREATE INDEX idx_workflow_templates_name ON workflow_templates(template_name);
+              CREATE INDEX idx_workflow_templates_type ON workflow_templates(workflow_type);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_workflow_templates_type;
+              DROP INDEX IF EXISTS idx_workflow_templates_name;
+              DROP TABLE IF EXISTS workflow_templates;
+
+  # Changeset 007: Create template_tasks table
+  - changeSet:
+      id: 007-create-template-tasks-table
+      author: developer
+      comment: "Create template_tasks table with self-referential foreign key for task dependencies and cascade delete on template deletion"
+      changes:
+        - sql:
+            sql: |
+              CREATE TABLE template_tasks (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                template_id UUID NOT NULL,
+                task_name VARCHAR(100) NOT NULL,
+                description TEXT,
+                sequence_order INTEGER NOT NULL,
+                depends_on_task_id UUID,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_by UUID,
+                updated_at TIMESTAMP,
+                updated_by UUID,
+                CONSTRAINT fk_template_tasks_template_id FOREIGN KEY (template_id) REFERENCES workflow_templates(id) ON DELETE CASCADE,
+                CONSTRAINT fk_template_tasks_depends_on FOREIGN KEY (depends_on_task_id) REFERENCES template_tasks(id),
+                CONSTRAINT fk_template_tasks_created_by FOREIGN KEY (created_by) REFERENCES users(id),
+                CONSTRAINT fk_template_tasks_updated_by FOREIGN KEY (updated_by) REFERENCES users(id)
+              );
+
+              CREATE INDEX idx_template_tasks_template_id ON template_tasks(template_id);
+              CREATE INDEX idx_template_tasks_sequence ON template_tasks(sequence_order);
+              CREATE INDEX idx_template_tasks_depends_on ON template_tasks(depends_on_task_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_template_tasks_depends_on;
+              DROP INDEX IF EXISTS idx_template_tasks_sequence;
+              DROP INDEX IF EXISTS idx_template_tasks_template_id;
+              DROP TABLE IF EXISTS template_tasks;
+
+  # Changeset 008: Seed workflow templates and tasks data
+  - changeSet:
+      id: 008-seed-workflow-templates
+      author: developer
+      comment: "Insert sample onboarding workflow template with associated tasks for testing"
+      changes:
+        - sql:
+            sql: |
+              -- Insert sample onboarding workflow template
+              INSERT INTO workflow_templates (id, template_name, workflow_type, description, default_status, created_at)
+              VALUES (
+                '550e8400-e29b-41d4-a716-446655440001',
+                'Standard Employee Onboarding',
+                'ONBOARDING',
+                'Standard onboarding workflow for new employees including IT setup, HR documentation, and team introductions',
+                'INITIATED',
+                CURRENT_TIMESTAMP
+              );
+
+              -- Insert tasks for the onboarding template
+              INSERT INTO template_tasks (id, template_id, task_name, description, sequence_order, depends_on_task_id, created_at)
+              VALUES
+                (
+                  '550e8400-e29b-41d4-a716-446655440101',
+                  '550e8400-e29b-41d4-a716-446655440001',
+                  'Create user account',
+                  'Create Active Directory user account and email address',
+                  1,
+                  NULL,
+                  CURRENT_TIMESTAMP
+                ),
+                (
+                  '550e8400-e29b-41d4-a716-446655440102',
+                  '550e8400-e29b-41d4-a716-446655440001',
+                  'Provision hardware',
+                  'Order and configure laptop, monitor, keyboard, and mouse',
+                  2,
+                  '550e8400-e29b-41d4-a716-446655440101',
+                  CURRENT_TIMESTAMP
+                ),
+                (
+                  '550e8400-e29b-41d4-a716-446655440103',
+                  '550e8400-e29b-41d4-a716-446655440001',
+                  'Complete HR documentation',
+                  'Employee to complete tax forms, benefits enrollment, and company policies acknowledgment',
+                  3,
+                  NULL,
+                  CURRENT_TIMESTAMP
+                ),
+                (
+                  '550e8400-e29b-41d4-a716-446655440104',
+                  '550e8400-e29b-41d4-a716-446655440001',
+                  'Schedule orientation meeting',
+                  'Schedule and conduct orientation meeting with HR and line manager',
+                  4,
+                  '550e8400-e29b-41d4-a716-446655440103',
+                  CURRENT_TIMESTAMP
+                ),
+                (
+                  '550e8400-e29b-41d4-a716-446655440105',
+                  '550e8400-e29b-41d4-a716-446655440001',
+                  'Grant system access',
+                  'Provide access to required applications and systems based on role',
+                  5,
+                  '550e8400-e29b-41d4-a716-446655440102',
+                  CURRENT_TIMESTAMP
+                );
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM template_tasks WHERE template_id = '550e8400-e29b-41d4-a716-446655440001';
+              DELETE FROM workflow_templates WHERE id = '550e8400-e29b-41d4-a716-446655440001';
