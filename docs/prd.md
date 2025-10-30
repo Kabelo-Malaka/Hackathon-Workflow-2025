@@ -159,11 +159,13 @@ PARALLEL WORK OPPORTUNITIES:
 
 ### Functional
 
+**MVP Scope Note:** Requirements marked with 🔮 are deferred to Phase 2. Requirements marked with ⚠️ are simplified for MVP.
+
 - FR1: The system shall provide pre-built workflow templates for onboarding and offboarding processes with role-based task variations
 - FR2: The system shall allow HR administrators to create and edit custom workflow templates using a form-based designer
 - FR3: The system shall automatically assign tasks to appropriate stakeholders (HR, Line Manager, Tech Support, Administrator) based on employee role and department
 - FR4: The system shall support parallel task execution (e.g., finance and tech tasks running simultaneously) and sequential task dependencies (e.g., manager approval before tech setup)
-- FR5: The system shall provide a visual dashboard displaying each employee's onboarding/offboarding progress with color-coded status indicators (not started, in progress, blocked, complete)
+- FR5: ⚠️ The system shall provide a basic workflow list view displaying each employee's onboarding/offboarding progress with status indicators (not started, in progress, blocked, complete) *(MVP: Table view instead of Kanban dashboard)*
 - FR6: The system shall send tasks as actionable Outlook emails with embedded links to web forms for task completion
 - FR7: The system shall send automated notifications and customizable reminders for pending and overdue tasks
 - FR8: The system shall generate dynamic equipment and access checklists based on employee role requirements
@@ -171,11 +173,11 @@ PARALLEL WORK OPPORTUNITIES:
 - FR10: The system shall automatically log all provisioned items during onboarding for future offboarding reference
 - FR11: The system shall automatically generate offboarding checklists based on items provisioned during onboarding (offboarding mirror)
 - FR12: The system shall require verification checkboxes for account deactivation and hardware collection during offboarding
-- FR13: The system shall allow HR/Admin users to add custom fields to workflow templates without code changes
-- FR14: The system shall support conditional task logic with if-then rules (e.g., "If remote = yes, skip office desk assignment")
-- FR15: The system shall provide manager and HR views showing overdue tasks, bottlenecks, and estimated completion dates
+- FR13: 🔮 The system shall allow HR/Admin users to add custom fields to workflow templates without code changes *(Deferred to Phase 2 - MVP uses fixed employee data fields)*
+- FR14: 🔮 The system shall support conditional task logic with if-then rules (e.g., "If remote = yes, skip office desk assignment") *(Deferred to Phase 2 - MVP uses multiple template variants)*
+- FR15: ⚠️ The system shall provide basic task queue views showing overdue tasks and task status *(MVP: Simplified views without advanced analytics)*
 - FR16: The system shall send completion confirmations to relevant stakeholders when tasks are marked complete
-- FR17: The system shall maintain a complete audit trail of all actions (who did what, when)
+- FR17: ⚠️ The system shall log critical actions with basic audit data (created_by, created_at, updated_at, updated_by) in database audit columns *(MVP: Database-level audit only; full audit trail UI deferred to Phase 2)*
 - FR18: The system shall support role-based access control (RBAC) for HR, Manager, Tech Support, and Admin roles
 
 ### Non Functional
@@ -390,20 +392,22 @@ Minimal custom branding for MVP; focus on clean, professional enterprise UI usin
 
 ## Epic List
 
-**Epic 1: Foundation & Authentication**
+**MVP Scope Note:** See `docs/backlog-revision-mvp.md` for complete scope reduction details approved on 2025-10-30.
+
+**Epic 1: Foundation & Authentication** ✅ **INCLUDED IN MVP**
 Establish project infrastructure, authentication system, and basic user management to enable secure access for HR, managers, tech support, and administrators.
 
-**Epic 2: Workflow Template Management**
-Create the template builder and library system allowing HR admins to define, configure, and manage onboarding/offboarding workflow templates with role-based task assignments and conditional logic.
+**Epic 2: Workflow Template Management** ⚠️ **SIMPLIFIED FOR MVP**
+Create the template builder and library system allowing HR admins to define, configure, and manage onboarding/offboarding workflow templates with role-based task assignments. *(MVP Scope: Stories 2.1-2.5 only. Custom fields and conditional logic deferred to Phase 2.)*
 
-**Epic 3: Workflow Execution & Task Routing**
+**Epic 3: Workflow Execution & Task Routing** ✅ **INCLUDED IN MVP**
 Implement core workflow engine that instantiates templates for specific employees, automatically assigns tasks to stakeholders, and manages workflow state transitions through the employee lifecycle.
 
-**Epic 4: Task Completion & Verification**
-Build task completion interfaces with mandatory checklist verification, email notifications, and automated offboarding mirror functionality to ensure security compliance.
+**Epic 4: Task Completion & Verification** ✅ **INCLUDED IN MVP**
+Build task completion interfaces with mandatory checklist verification, email notifications, and automated offboarding mirror functionality to ensure security compliance. *(Includes the key offboarding mirror differentiator - Story 4.7)*
 
-**Epic 5: Dashboard & Visibility**
-Deliver real-time tracking dashboard with filtering, employee detail views, audit trail, and reporting capabilities to provide stakeholders with complete visibility into all employee transitions.
+**Epic 5: Dashboard & Visibility** 🔮 **DEFERRED TO PHASE 2**
+Deliver real-time tracking dashboard with filtering, employee detail views, audit trail, and reporting capabilities to provide stakeholders with complete visibility into all employee transitions. *(MVP uses basic workflow list views and task queues from Epic 3.6 and Epic 4.8 instead.)*
 
 ## Epic 1: Foundation & Authentication
 
@@ -627,19 +631,23 @@ so that I can write unit and integration tests from the start and maintain high 
 
 ## Epic 2: Workflow Template Management
 
-**Epic Goal:** Build the complete template management system enabling HR administrators to define, configure, and manage reusable onboarding and offboarding workflow templates. This includes form-based template creation with task definitions, role assignments, conditional logic, and custom fields, plus a template library for browsing, editing, and activating templates for use in employee workflows.
+**MVP Scope:** ⚠️ **SIMPLIFIED** - Stories 2.1-2.5 only. Stories 2.6 (Custom Fields) and 2.7 (Conditional Logic) deferred to Phase 2.
+
+**Epic Goal:** Build the template management system enabling HR administrators to define, configure, and manage reusable onboarding and offboarding workflow templates. This includes form-based template creation with task definitions, role assignments, and a template library for browsing, editing, and activating templates for use in employee workflows. *(MVP uses fixed employee data fields instead of custom fields, and multiple template variants instead of conditional logic.)*
 
 ### Story 2.1: Workflow Template Data Model
 
 As a **developer**,
 I want the database schema for workflow templates and tasks defined with Liquibase migrations,
-so that templates can store task sequences, role assignments, dependencies, and custom field definitions.
+so that templates can store task sequences, role assignments, and dependencies.
+
+**MVP Scope Note:** Custom fields and conditional rules tables removed from MVP scope.
 
 **Acceptance Criteria:**
 1. workflow_templates table is created with columns: id (UUID), name, description, type (ONBOARDING/OFFBOARDING), is_active, created_at, created_by, updated_at, updated_by
 2. template_tasks table is created with columns: id (UUID), template_id (FK), task_name, description, assigned_role, sequence_order, is_parallel, dependency_task_id (FK, nullable), created_at, updated_at
-3. template_custom_fields table is created with columns: id (UUID), template_id (FK), field_name, field_type (TEXT/NUMBER/DATE/BOOLEAN/SELECT), is_required, options (JSON for SELECT type)
-4. template_conditional_rules table is created with columns: id (UUID), task_id (FK), condition_field, condition_operator (EQUALS/NOT_EQUALS/CONTAINS), condition_value, action (SHOW_TASK/HIDE_TASK)
+3. ~~template_custom_fields table is created~~ 🔮 **DEFERRED TO PHASE 2**
+4. ~~template_conditional_rules table is created~~ 🔮 **DEFERRED TO PHASE 2**
 5. Foreign key relationships are properly defined with ON DELETE CASCADE where appropriate
 6. Indexes are created on template_id, assigned_role, sequence_order
 7. Sample seed data includes at least one basic onboarding template for testing
@@ -651,16 +659,18 @@ As a **backend developer**,
 I want REST API endpoints for template CRUD operations,
 so that the frontend can create, retrieve, update, and delete workflow templates.
 
+**MVP Scope Note:** Custom fields and conditional rules removed from API.
+
 **Acceptance Criteria:**
 1. API endpoints exist: POST /api/templates, GET /api/templates, GET /api/templates/{id}, PUT /api/templates/{id}, DELETE /api/templates/{id}
 2. Only HR_ADMIN and ADMINISTRATOR roles can access template management endpoints
-3. POST creates new template with tasks, custom fields, and conditional rules in single transaction
+3. POST creates new template with tasks in single transaction *(MVP: no custom fields or conditional rules)*
 4. GET /api/templates returns list of all templates with summary info (id, name, type, is_active)
-5. GET /api/templates/{id} returns complete template details including all tasks, custom fields, and conditional rules
-6. PUT updates template and cascades updates to tasks, fields, and rules (replaces entire structure)
+5. GET /api/templates/{id} returns complete template details including all tasks *(MVP: no custom fields or conditional rules)*
+6. PUT updates template and cascades updates to tasks (replaces entire structure)
 7. DELETE soft-deletes template (sets is_active=false) to preserve history
 8. Templates cannot be deleted if they're in use by active workflows (return 409 Conflict with message)
-9. API uses DTOs for request/response (TemplateDTO, TaskDTO, CustomFieldDTO, ConditionalRuleDTO)
+9. API uses DTOs for request/response (TemplateDTO, TaskDTO) *(MVP: no CustomFieldDTO or ConditionalRuleDTO)*
 10. All operations update audit columns and are logged for audit trail
 11. Swagger documentation is auto-generated for all endpoints
 
@@ -670,14 +680,16 @@ As a **backend developer**,
 I want service layer business logic for template validation and management,
 so that templates are validated for logical consistency before being saved.
 
+**MVP Scope Note:** Custom fields and conditional rules validation removed.
+
 **Acceptance Criteria:**
 1. TemplateService class implements business logic for template operations
 2. Template validation ensures: all tasks have unique sequence_order within template, parallel tasks have same sequence_order, dependency_task_id references valid task within same template
-3. Conditional rule validation ensures: condition_field references a valid custom field, condition_value is compatible with field_type
+3. ~~Conditional rule validation~~ 🔮 **DEFERRED TO PHASE 2**
 4. Templates must have at least one task to be saved as active
 5. Task sequence_order is automatically renumbered if gaps exist (normalize to 1, 2, 3...)
 6. Circular task dependencies are detected and rejected with clear error message
-7. Custom field names must be unique within a template
+7. ~~Custom field names must be unique within a template~~ 🔮 **DEFERRED TO PHASE 2**
 8. Service methods return validation errors as structured error responses (not generic exceptions)
 9. Service layer uses transaction management (all template changes commit or rollback atomically)
 10. Unit tests cover validation logic and edge cases
@@ -719,7 +731,9 @@ so that I can create structured workflow templates without drag-and-drop complex
 10. Failed save displays validation errors inline on form fields
 11. "Cancel" button confirms unsaved changes and navigates back to template library
 
-### Story 2.6: Template Builder Form - Custom Fields
+### Story 2.6: Template Builder Form - Custom Fields 🔮 **DEFERRED TO PHASE 2**
+
+**MVP Scope:** This story is NOT included in MVP. Use fixed employee data fields (employee_name, employee_email, employee_role, start_date, department) instead.
 
 As an **HR Administrator**,
 I want to add custom fields to templates,
@@ -737,7 +751,9 @@ so that I can capture company-specific information during workflow execution (e.
 9. Custom fields are saved as part of template when "Save Template" is clicked
 10. Validation ensures required fields are properly configured before save
 
-### Story 2.7: Template Builder Form - Conditional Task Logic
+### Story 2.7: Template Builder Form - Conditional Task Logic 🔮 **DEFERRED TO PHASE 2**
+
+**MVP Scope:** This story is NOT included in MVP. Use multiple template variants instead (e.g., "Remote Onboarding Template" vs "Office Onboarding Template").
 
 As an **HR Administrator**,
 I want to define conditional rules that show or hide tasks based on custom field values,
@@ -1040,11 +1056,19 @@ so that I can see what work I need to complete prioritized by due date.
 
 ---
 
-## Epic 5: Dashboard & Visibility
+## Epic 5: Dashboard & Visibility 🔮 **DEFERRED TO PHASE 2**
 
-**Epic Goal:** Deliver comprehensive visibility into all employee transitions through a real-time dashboard with smart filtering, detailed workflow drill-down views, complete audit trail, and basic reporting capabilities. This epic enables all stakeholders to track progress, identify bottlenecks, ensure accountability, and produce compliance documentation, completing the MVP feature set.
+**MVP Scope:** ⛔ **ENTIRE EPIC DEFERRED** - All 8 stories (5.1-5.8) moved to Phase 2. MVP uses basic workflow list views (Epic 3.6) and task queues (Epic 4.8) for visibility instead.
 
-### Story 5.1: Dashboard Data Aggregation API
+**Epic Goal:** Deliver comprehensive visibility into all employee transitions through a real-time dashboard with smart filtering, detailed workflow drill-down views, complete audit trail, and basic reporting capabilities. This epic enables all stakeholders to track progress, identify bottlenecks, ensure accountability, and produce compliance documentation.
+
+**MVP Workarounds:**
+- Use Story 3.6 (Workflow List API) with simple table UI instead of Kanban dashboard
+- Use Story 4.8 (Task Queue UI) for personal task visibility
+- Email notifications (Story 4.5) provide proactive updates
+- Database audit columns capture basic audit data for future reporting
+
+### Story 5.1: Dashboard Data Aggregation API 🔮 **DEFERRED TO PHASE 2**
 
 As a **backend developer**,
 I want API endpoint that aggregates workflow statistics,
@@ -1062,7 +1086,7 @@ so that the dashboard can display summary metrics efficiently without complex fr
 9. Swagger documentation with example response
 10. Unit tests validate aggregation logic with test data
 
-### Story 5.2: Kanban Dashboard UI
+### Story 5.2: Kanban Dashboard UI 🔮 **DEFERRED TO PHASE 2**
 
 As a **user (any role)**,
 I want a dashboard with Kanban-style visualization showing workflows in pipeline stages,
@@ -1082,7 +1106,7 @@ so that I can see at a glance where employee transitions are in the process and 
 11. Material-UI components provide consistent styling
 12. Dashboard is responsive for tablet view (columns stack vertically on smaller screens)
 
-### Story 5.3: Dashboard Filtering & Search
+### Story 5.3: Dashboard Filtering & Search 🔮 **DEFERRED TO PHASE 2**
 
 As a **user (any role)**,
 I want to filter and search workflows on the dashboard,
@@ -1100,7 +1124,7 @@ so that I can focus on specific employee transitions or workflow types relevant 
 9. "My Tasks Only" filter (default for non-admin users) shows workflows where user has assigned tasks
 10. Filters work in combination (e.g., Onboarding + In Progress + My Tasks Only)
 
-### Story 5.4: Workflow Detail View
+### Story 5.4: Workflow Detail View 🔮 **DEFERRED TO PHASE 2**
 
 As a **user (any role)**,
 I want a detailed page for each workflow showing complete task breakdown, timeline, and responsible parties,
@@ -1120,7 +1144,7 @@ so that I can understand exactly what's happening with a specific employee's onb
 11. For HR_ADMIN, page includes "Cancel Workflow" button (marks workflow as cancelled status - edge case handling)
 12. Material-UI components provide consistent styling with clear visual hierarchy
 
-### Story 5.5: Audit Trail View
+### Story 5.5: Audit Trail View 🔮 **DEFERRED TO PHASE 2**
 
 As an **HR Administrator**,
 I want an audit trail page showing all actions taken in the system,
@@ -1139,7 +1163,7 @@ so that I can track accountability, troubleshoot issues, and produce compliance 
 10. Clicking an event row expands to show full details (e.g., before/after values for edits)
 11. Material-UI Table component with sorting and filtering capabilities
 
-### Story 5.6: Audit Event Capture Service
+### Story 5.6: Audit Event Capture Service 🔮 **DEFERRED TO PHASE 2**
 
 As a **backend developer**,
 I want audit logging service that captures all significant system actions,
@@ -1157,7 +1181,7 @@ so that complete audit trail is maintained for compliance and troubleshooting.
 9. Indexes on user_id, action_type, entity_id, timestamp for efficient querying
 10. Unit tests validate audit events are captured for key actions
 
-### Story 5.7: Basic Reporting API
+### Story 5.7: Basic Reporting API 🔮 **DEFERRED TO PHASE 2**
 
 As an **HR Administrator**,
 I want API endpoints for basic reports,
@@ -1175,7 +1199,7 @@ so that I can export data for analysis and compliance documentation.
 9. Reports use efficient queries with proper indexing (performance target: <2 seconds for 1000 workflows)
 10. Swagger documentation with example requests
 
-### Story 5.8: Export & Download UI
+### Story 5.8: Export & Download UI 🔮 **DEFERRED TO PHASE 2**
 
 As an **HR Administrator**,
 I want to export workflow and task data from the UI,
