@@ -476,6 +476,30 @@ so that I can securely access the system and my session automatically expires wh
 9. Login attempts are logged (username, timestamp, success/failure) for audit purposes
 10. Failed login attempts return generic error message (don't reveal if username exists)
 
+### Story 1.4b: Global Error Handling Middleware
+
+As a **developer**,
+I want centralized error handling middleware configured for consistent API error responses,
+so that all endpoints return structured error formats and validation/authorization errors are handled uniformly.
+
+**Acceptance Criteria:**
+1. GlobalExceptionHandler class is created with @ControllerAdvice annotation
+2. Handler catches and transforms common exceptions into structured error responses with format:
+   - timestamp (ISO 8601), status (HTTP code), error (error type), message (human-readable), path (endpoint)
+3. Validation errors (400 Bad Request) include optional details array with field-specific error messages
+4. Handler processes these exception types:
+   - MethodArgumentNotValidException → 400 Bad Request with validation details
+   - ResourceNotFoundException (custom) → 404 Not Found
+   - ConflictException (custom) → 409 Conflict
+   - AccessDeniedException → 403 Forbidden
+   - Exception (catch-all) → 500 Internal Server Error
+5. Custom exceptions created: ResourceNotFoundException, ValidationException, ConflictException in exception/ package
+6. Error responses do not expose sensitive information (stack traces, internal paths) in production
+7. All error responses follow consistent JSON structure
+8. CORS configuration is set to allow requests from frontend origin only
+9. Unit tests verify error response format for each exception type
+10. Swagger documentation shows example error responses for API endpoints
+
 ### Story 1.5: User Management CRUD
 
 As an **HR Administrator**,
@@ -529,6 +553,75 @@ so that I can onboard new system users before they can access the application.
 8. Active/Inactive status is visually indicated (badge or icon)
 9. Edit and deactivate actions are visible in table rows but need not be functional yet (can be completed in later story or iteration)
 10. Material-UI components (Table, Modal, Form) are used for consistent styling
+
+### Story 1.8: Testing Framework Setup
+
+As a **developer**,
+I want testing frameworks configured for both frontend and backend with sample tests,
+so that I can write unit and integration tests from the start and maintain high code quality throughout development.
+
+**Acceptance Criteria:**
+
+**Frontend Testing Setup:**
+1. Jest 29.7.0 is installed and configured in `frontend/package.json`
+2. React Testing Library 14.1.2 is installed and configured
+3. Jest configuration file (`jest.config.js`) is created with:
+   - TypeScript support via `ts-jest`
+   - Coverage thresholds set (80% for statements, branches, functions, lines)
+   - Test file patterns: `**/*.test.tsx`, `**/*.test.ts`
+   - Setup file: `src/setupTests.ts` for global test configuration
+4. `src/setupTests.ts` includes `@testing-library/jest-dom` import for DOM matchers
+5. npm scripts added: `"test": "jest"`, `"test:watch": "jest --watch"`, `"test:coverage": "jest --coverage"`
+6. Sample component test created at `src/components/common/Button.test.tsx` demonstrating:
+   - Component rendering test
+   - User interaction test (click event)
+   - Accessibility test (button has accessible name)
+7. Test runs successfully: `npm test` passes with sample test
+
+**Backend Testing Setup:**
+8. JUnit 5 (Jupiter) is configured in `backend/pom.xml` with `spring-boot-starter-test` dependency
+9. Mockito is included for mocking (part of `spring-boot-starter-test`)
+10. TestContainers 1.19.3 is added for integration tests with PostgreSQL: `testcontainers-postgresql` dependency
+11. Test directory structure created:
+    - `src/test/java/com/magnab/employeelifecycle/service/` for service unit tests
+    - `src/test/java/com/magnab/employeelifecycle/controller/` for controller integration tests
+    - `src/test/java/com/magnab/employeelifecycle/repository/` for repository tests
+12. Test application properties created at `src/test/resources/application-test.yml` with test database configuration
+13. Sample service unit test created at `UserServiceTest.java` demonstrating:
+    - Mocking repository dependencies with Mockito
+    - Testing business logic in isolation
+    - Using `@ExtendWith(MockitoExtension.class)`
+14. Sample integration test created at `UserControllerIntegrationTest.java` demonstrating:
+    - Using `@SpringBootTest` and `@Transactional`
+    - TestContainers PostgreSQL setup with `@Testcontainers` annotation
+    - MockMvc for API endpoint testing
+15. Maven test phase runs successfully: `mvn test` passes with sample tests
+16. Surefire plugin configured for test execution with proper reporting
+
+**Documentation:**
+17. README.md updated with "Running Tests" section including:
+    - Frontend: `npm test` (unit tests), `npm run test:coverage` (with coverage report)
+    - Backend: `mvn test` (all tests), `mvn test -Dtest=UserServiceTest` (single test)
+18. README.md includes note: "Tests run automatically in Docker build process"
+19. .gitignore updated to exclude test coverage reports (`coverage/`, `target/site/`)
+
+**Docker Integration:**
+20. Frontend Dockerfile includes `RUN npm test` before build step (fails build if tests fail)
+21. Backend Dockerfile includes `RUN mvn test` before packaging JAR (fails build if tests fail)
+
+**Technical Notes:**
+- TestContainers requires Docker to be running for integration tests
+- Frontend tests use jsdom environment (no real browser needed)
+- Backend tests use H2 in-memory database for unit tests, PostgreSQL container for integration tests
+- Coverage reports generated in `frontend/coverage/` and `backend/target/site/jacoco/`
+
+**Definition of Done:**
+- All testing frameworks installed and configured
+- Sample tests created and passing
+- npm test and mvn test commands work
+- Test coverage reporting enabled
+- Documentation updated
+- Docker builds fail if tests fail (fail-fast strategy)
 
 ---
 

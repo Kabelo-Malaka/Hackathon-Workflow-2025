@@ -17,6 +17,45 @@ This document defines state management patterns using Redux Toolkit and RTK Quer
 - **Form State (React Hook Form):** Template builder, task completion, user forms (not Redux)
 - **Component State (useState):** Accordion expand/collapse, tooltip visibility, local UI toggles
 
+**Conditional Task Logic Evaluation Strategy:**
+
+The system uses conditional rules to show/hide tasks based on custom field values (e.g., "If remote=yes, skip office desk assignment"). Evaluation happens at both client and server levels with clear separation of concerns:
+
+1. **Client-Side Evaluation (Preview Only):**
+   - **Where:** Template Builder (TemplateFormBuilder.tsx) and Workflow Initiation Form (InitiateWorkflowDialog.tsx)
+   - **Purpose:** Provide immediate UX feedback showing which tasks will be created
+   - **Implementation:** React Hook Form's `watch()` API monitors custom field changes, client-side JavaScript evaluates conditional rules to show/hide task previews
+   - **Authority:** Non-authoritative - preview only, not persisted
+
+2. **Server-Side Evaluation (Authoritative):**
+   - **Where:** WorkflowService.createWorkflowInstance() in backend
+   - **Purpose:** Definitively determine which tasks are visible when workflow is instantiated
+   - **Implementation:** ConditionalRuleEvaluator.java evaluates all rules, sets `task_instances.is_visible` flag in database
+   - **Authority:** Authoritative - this is the source of truth
+
+3. **After Workflow Creation:**
+   - Frontend always uses the server-side `is_visible` flag from API responses
+   - No client-side re-evaluation after workflow is created
+   - Task visibility is immutable once workflow is instantiated (reflects state at creation time)
+
+**Example Flow:**
+```typescript
+// 1. Template Builder (Client Preview)
+// HR sees: "If remote=true → Office Setup task will be hidden"
+const { watch } = useForm();
+const isRemote = watch('remote');
+const showOfficeSetup = !isRemote; // Client-side preview
+
+// 2. Workflow Initiation (Server Authority)
+POST /api/workflows { employee_name, remote: true, ... }
+// → Backend evaluates: remote=true → OfficeSetupTask.is_visible=false
+
+// 3. Workflow Display (Server Truth)
+GET /api/workflows/{id}
+// → Returns tasks with is_visible flags
+// → Frontend respects server's is_visible values (no re-evaluation)
+```
+
 ## Store Structure
 
 The application uses **Redux Toolkit** for global state management and **RTK Query** for server state (API data fetching and caching).
