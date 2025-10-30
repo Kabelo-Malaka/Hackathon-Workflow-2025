@@ -25,12 +25,142 @@ This web-based workflow orchestration platform will serve as a single source of 
 |------|---------|-------------|--------|
 | 2025-10-30 | 1.0 | Initial PRD creation from approved Project Brief | Product Manager - John |
 
+## System Diagrams
+
+### Workflow State Machine
+
+```
+┌─────────────┐
+│  INITIATED  │ ──────> Workflow created by HR, tasks instantiated
+└──────┬──────┘
+       │
+       │ (First task assigned)
+       ▼
+┌─────────────┐
+│ IN_PROGRESS │ ──────> Tasks being executed, assignments active
+└──────┬──────┘
+       │
+       ├──────> (Blocking issue encountered)
+       │                 │
+       │                 ▼
+       │           ┌──────────┐
+       │           │ BLOCKED  │ ──────> Waiting for resolution
+       │           └─────┬────┘
+       │                 │
+       │                 │ (Issue resolved)
+       │                 │
+       │◄────────────────┘
+       │
+       │ (All visible tasks completed)
+       ▼
+┌─────────────┐
+│  COMPLETED  │ ──────> Workflow finished, audit trail preserved
+└─────────────┘
+```
+
+### System Context Diagram
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                    EXTERNAL ACTORS                              │
+│                                                                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌────────────────┐      │
+│  │ HR Admin     │  │ Line Manager │  │ Tech Support/  │      │
+│  │              │  │              │  │ Administrator  │      │
+│  └──────┬───────┘  └──────┬───────┘  └───────┬────────┘      │
+│         │                 │                   │                │
+│         │                 │                   │                │
+└─────────┼─────────────────┼───────────────────┼────────────────┘
+          │                 │                   │
+          │   (Web Browser) │                   │
+          ▼                 ▼                   ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│        ┌──────────────────────────────────────────┐            │
+│        │    EMPLOYEE LIFECYCLE MANAGEMENT SYSTEM   │            │
+│        │                                           │            │
+│        │  ┌────────────────┐  ┌────────────────┐ │            │
+│        │  │   Frontend     │  │    Backend     │ │            │
+│        │  │ React + Redux  │◄─┤  Spring Boot   │ │            │
+│        │  │   (nginx)      │  │   REST API     │ │            │
+│        │  └────────────────┘  └────────┬───────┘ │            │
+│        │                               │         │            │
+│        └───────────────────────────────┼─────────┘            │
+│                                        │                       │
+│                ┌───────────────────────┼────────────┐          │
+│                │                       │            │          │
+│                ▼                       ▼            ▼          │
+│        ┌───────────────┐      ┌──────────────┐  ┌─────────┐  │
+│        │  PostgreSQL   │      │NotificationSvc│  │ Audit   │  │
+│        │   Database    │      │ (Email SMTP) │  │ Service │  │
+│        └───────────────┘      └──────┬───────┘  └─────────┘  │
+│                                      │                        │
+└──────────────────────────────────────┼────────────────────────┘
+                                       │
+                                       │ (SMTP: Port 587)
+                                       ▼
+                              ┌────────────────┐
+                              │  Gmail SMTP    │
+                              │ (smtp.gmail    │
+                              │  .com:587)     │
+                              └────────────────┘
+                                       │
+                                       │ (Email delivery)
+                                       ▼
+                              ┌────────────────┐
+                              │ User Outlook   │
+                              │   Inbox        │
+                              └────────────────┘
+```
+
+### Epic Dependency Diagram
+
+```
+Epic 1: Foundation & Authentication
+├── Project setup, Docker, Database, Auth, User Management
+└── Delivers: Deployable app with login and user management
+       │
+       │ (Requires: Database schema, authentication)
+       ▼
+Epic 2: Workflow Template Management
+├── Template data model, APIs, form-based builder
+├── Custom fields, conditional logic, template library
+└── Delivers: HR can define and manage workflow templates
+       │
+       │ (Requires: Templates exist)
+       ▼
+Epic 3: Workflow Execution & Task Routing
+├── Workflow instantiation, task assignment, state management
+├── Workflow initiation API, routing logic
+└── Delivers: HR can initiate workflows; tasks auto-assigned
+       │
+       │ (Requires: Workflow instances and task assignments)
+       ▼
+Epic 4: Task Completion & Verification
+├── Checklist data model, completion service, email notifications
+├── Task forms, offboarding mirror, task queue UI
+└── Delivers: Users complete tasks with verification; security via offboarding mirror
+       │
+       │ (Requires: Workflows and tasks executing)
+       ▼
+Epic 5: Dashboard & Visibility
+├── Dashboard APIs, Kanban UI, filtering, workflow detail view
+├── Audit trail, reporting, export functionality
+└── Delivers: Complete visibility, tracking, and compliance reporting
+
+PARALLEL WORK OPPORTUNITIES:
+- Within Epic 1: Stories 1.1-1.3 (setup) can run parallel to 1.4-1.5 (auth/user mgmt)
+- Epic 2 backend (2.1-2.3) can run parallel to Epic 1 frontend (1.6-1.7)
+- Epic 3 backend (3.1-3.4) can run parallel to Epic 2 frontend (2.4-2.7)
+- Within epics: Backend stories often paired with frontend stories for parallel dev
+```
+
 ## Requirements
 
 ### Functional
 
 - FR1: The system shall provide pre-built workflow templates for onboarding and offboarding processes with role-based task variations
-- FR2: The system shall allow HR administrators to create and edit custom workflow templates using a drag-and-drop designer
+- FR2: The system shall allow HR administrators to create and edit custom workflow templates using a form-based designer
 - FR3: The system shall automatically assign tasks to appropriate stakeholders (HR, Line Manager, Tech Support, Administrator) based on employee role and department
 - FR4: The system shall support parallel task execution (e.g., finance and tech tasks running simultaneously) and sequential task dependencies (e.g., manager approval before tech setup)
 - FR5: The system shall provide a visual dashboard displaying each employee's onboarding/offboarding progress with color-coded status indicators (not started, in progress, blocked, complete)
@@ -220,6 +350,7 @@ Minimal custom branding for MVP; focus on clean, professional enterprise UI usin
 - **Version Control:** Git with feature branch workflow
 - **Code Quality:** ESLint + Prettier for frontend; Checkstyle for backend (optional for MVP but recommended)
 - **IDE Support:** VSCode for frontend, IntelliJ IDEA for backend
+- **Deployment Strategy:** Local Docker deployment only for MVP; no CI/CD pipeline required. Developers run `docker-compose up` locally for development and testing.
 
 **Security & Compliance:**
 - Use HTTPS in production (TLS certificates via Let's Encrypt or corporate CA)
@@ -968,4 +1099,98 @@ so that I can create reports in Excel or share data with stakeholders outside th
 8. Large exports (>1000 rows) display loading indicator during generation
 9. Error handling displays message if export fails
 10. Material-UI Dialog component for export interface
+
+---
+
+## Checklist Results Report
+
+### Executive Summary
+
+**Overall PRD Completeness:** 92% ✅
+
+**MVP Scope Appropriateness:** Just Right ✅
+
+**Readiness for Architecture Phase:** Ready ✅
+
+The PRD is comprehensive with clear requirements, well-structured epics (5 epics, 37 stories), and detailed acceptance criteria. The document successfully bridges from the approved Project Brief to actionable development specifications. All critical issues have been addressed.
+
+### Category Validation Results
+
+| Category                         | Status | Completion | Critical Issues |
+| -------------------------------- | ------ | ---------- | --------------- |
+| 1. Problem Definition & Context  | PASS   | 95%        | None |
+| 2. MVP Scope Definition          | PASS   | 90%        | None |
+| 3. User Experience Requirements  | PASS   | 88%        | None |
+| 4. Functional Requirements       | PASS   | 95%        | None (FR2 inconsistency fixed) |
+| 5. Non-Functional Requirements   | PASS   | 92%        | None |
+| 6. Epic & Story Structure        | PASS   | 98%        | None |
+| 7. Technical Guidance            | PASS   | 95%        | None |
+| 8. Cross-Functional Requirements | PASS   | 85%        | None (local deployment clarified) |
+| 9. Clarity & Communication       | PASS   | 93%        | None (diagrams added) |
+
+### Key Strengths
+
+- **Exceptional Epic/Story Structure:** 37 well-sized stories with clear acceptance criteria, logical sequencing, and appropriate dependencies
+- **Clear Technical Guidance:** Complete tech stack specified, constraints documented, trade-offs explained
+- **Strong Problem-Solution Fit:** Requirements directly address Project Brief pain points (security risks, tracking gaps, consistency problems)
+- **Appropriate MVP Scope:** Features are minimal while viable; offboarding mirror is key differentiator
+- **Comprehensive Requirements:** 18 functional requirements and 12 non-functional requirements cover all core functionality
+
+### Timeline & Resource Assessment
+
+- **37 stories / 2 developers / 12-16 weeks** = 1.5-2.3 stories/week (realistic with part-time QA)
+- Critical path well-defined with parallelization opportunities identified
+- Backend/frontend pairs allow concurrent development
+
+### Final Decision
+
+**✅ READY FOR ARCHITECT** - The PRD is comprehensive, properly structured, and ready for architectural design.
+
+---
+
+## Next Steps
+
+### UX Expert Prompt
+
+The UX Expert should review this PRD and create detailed UI/UX specifications including:
+
+- Wireframes for all 8 core screens (Dashboard, Employee Detail, Task Completion Form, Template Builder, Template Library, Task Queue, Audit Trail, Email Preview)
+- Detailed interaction flows for key user journeys (initiate workflow, complete task, view status)
+- Component library specifications using Material-UI
+- Responsive breakpoint definitions for desktop/tablet views
+- Email template HTML/CSS designs for cross-client compatibility
+- Accessibility implementation guidelines (WCAG AA compliance)
+
+**Key Focus Areas:**
+- Kanban dashboard visualization with smart filtering
+- Form-based template builder with conditional logic UI
+- Task completion form with dynamic checklist interface
+- Email-driven task experience (email → web form → completion)
+
+**Input Documents:** This PRD (`docs/prd.md`), Project Brief (`docs/brief.md`)
+
+### Architect Prompt
+
+The Architect should review this PRD and create comprehensive technical architecture including:
+
+- Detailed API contract specifications (REST endpoints, DTOs, error responses)
+- Database schema design with complete entity relationships, indexes, and constraints
+- Frontend architecture (Redux store structure, component hierarchy, routing)
+- Backend service architecture (5 core services: Workflow, Notification, Template, User, Audit)
+- Email notification system design (SMTP integration, template rendering, retry logic)
+- Security architecture (session management, RBAC, CSRF protection, data encryption)
+- Error handling and validation strategies
+- Performance optimization approach (caching, pagination, query optimization)
+- Testing strategy implementation details
+
+**Key Technical Decisions to Design:**
+- Workflow state machine implementation (state transitions, validation rules)
+- Conditional task logic evaluation engine
+- Offboarding mirror data model (provisioned items tracking)
+- Task assignment algorithm (role-based routing, load balancing)
+- Email template rendering system
+
+**Input Documents:** This PRD (`docs/prd.md`), Project Brief (`docs/brief.md`), Technical Preferences (`docs/brief.md` Technical Considerations section)
+
+**Output Document:** `docs/architecture.md`
 
