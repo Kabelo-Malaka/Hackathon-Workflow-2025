@@ -55,6 +55,83 @@ mvn spring-boot:run
 - `mvn clean install` - Build project and run tests
 - `mvn test` - Run test suite only
 
+## Running Tests
+
+The project includes comprehensive testing infrastructure for both frontend and backend components.
+
+### Testing Frameworks
+
+**Frontend**:
+- **Jest 29.7.0** - Testing framework
+- **React Testing Library 14.1.2** - Component testing utilities
+- **@testing-library/user-event** - User interaction simulation
+- **Coverage Threshold**: 80% across statements, branches, functions, and lines
+
+**Backend**:
+- **JUnit 5 (Jupiter)** - Unit testing framework
+- **Mockito 5.8.0** - Mocking framework
+- **TestContainers 1.19.3** - Integration testing with real PostgreSQL
+- **Spring Security Test** - Security testing utilities
+
+### Frontend Tests
+
+Run all frontend tests:
+```bash
+cd frontend
+npm test
+```
+
+Run tests with coverage report:
+```bash
+npm test -- --coverage
+```
+
+Run tests in watch mode (development):
+```bash
+npm test -- --watch
+```
+
+**Sample Tests**:
+- `src/components/common/Button.test.tsx` - Demonstrates React Testing Library best practices
+- Tests include: component rendering, user interactions, accessibility checks
+
+### Backend Tests
+
+Run all backend tests (unit + integration):
+```bash
+cd backend
+mvn test
+```
+
+Run only unit tests:
+```bash
+mvn test -Dtest=*Test
+```
+
+Run only integration tests:
+```bash
+mvn test -Dtest=*IntegrationTest
+```
+
+Run specific test class:
+```bash
+mvn test -Dtest=UserServiceTest
+```
+
+**Sample Tests**:
+- `src/test/java/.../service/UserServiceTest.java` - Unit tests with Mockito mocks
+- `src/test/java/.../controller/UserControllerIntegrationTest.java` - Integration tests with TestContainers
+
+**Note**: Integration tests automatically spin up a PostgreSQL container using TestContainers and run database migrations with Liquibase.
+
+### Test Coverage Reports
+
+**Frontend**:
+Coverage reports are generated in `frontend/coverage/` directory. Open `coverage/lcov-report/index.html` in a browser to view the detailed report.
+
+**Backend**:
+JaCoCo coverage reports can be configured by adding the JaCoCo Maven plugin to `pom.xml`. By default, Maven Surefire generates basic test reports in `target/surefire-reports/`.
+
 ## Running with Docker Compose
 
 The easiest way to run the entire application stack (frontend, backend, database) is using Docker Compose.

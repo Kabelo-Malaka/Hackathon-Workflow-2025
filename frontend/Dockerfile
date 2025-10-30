@@ -5,6 +5,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --legacy-peer-deps
 COPY . .
+# Run tests before building
+RUN npm test
 RUN npm run build
 
 FROM nginx:1.25-alpine
