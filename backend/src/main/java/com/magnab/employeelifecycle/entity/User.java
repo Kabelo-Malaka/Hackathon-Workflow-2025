@@ -43,6 +43,7 @@ public class User {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false)
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.NAMED_ENUM)
     private UserRole role;
 
     @Column(name = "is_active", nullable = false)

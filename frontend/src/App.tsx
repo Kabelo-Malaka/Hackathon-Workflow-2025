@@ -4,6 +4,7 @@ import { useDispatch } from 'react-redux';
 import { CircularProgress, Box } from '@mui/material';
 import { LoginPage } from './components/auth/LoginPage';
 import { DashboardPage } from './components/dashboard/DashboardPage';
+import { UserManagementPage } from './components/users/UserManagementPage';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
 import { AppLayout } from './components/common/AppLayout';
 import { useCheckSessionQuery } from './features/auth/authApi';
@@ -49,6 +50,16 @@ function App() {
             <ProtectedRoute>
               <AppLayout>
                 <DashboardPage />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/users"
+          element={
+            <ProtectedRoute>
+              <AppLayout>
+                <UserManagementPage />
               </AppLayout>
             </ProtectedRoute>
           }

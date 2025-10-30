@@ -1,6 +1,8 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { authApi } from './features/auth/authApi';
+import { usersApi } from './features/users/usersApi';
 import authReducer from './features/auth/authSlice';
+import usersReducer from './features/users/usersSlice';
 
 // Redux store configuration
 // Feature slices will be added as stories are implemented
@@ -8,10 +10,14 @@ import authReducer from './features/auth/authSlice';
 export const store = configureStore({
   reducer: {
     auth: authReducer,
+    users: usersReducer,
     [authApi.reducerPath]: authApi.reducer,
+    [usersApi.reducerPath]: usersApi.reducer,
   },
   middleware: (getDefaultMiddleware) =>
-    getDefaultMiddleware().concat(authApi.middleware),
+    getDefaultMiddleware()
+      .concat(authApi.middleware)
+      .concat(usersApi.middleware),
 });
 
 export type RootState = ReturnType<typeof store.getState>;
