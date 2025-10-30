@@ -1,6 +1,13 @@
 # 3. Project Structure
 
-The frontend follows a **feature-based architecture** organized by business domain, with shared utilities and components separated. This structure promotes code reusability, maintainability, and clear boundaries between features.
+The frontend follows a **feature-based architecture** organized by business domain, with shared utilities and components separated. This structure is designed to support Sally's UX specification including the 10-component design system, 4-breakpoint responsive strategy, and WCAG 2.1 AA accessibility requirements.
+
+**Key Alignment with UX Specification:**
+- ✅ Supports Sally's 10 core components (Button, WorkflowCard, TaskChecklist, etc.)
+- ✅ Feature-based organization matches user flows (auth, dashboard, templates, workflows, tasks)
+- ✅ Centralized theme configuration for Magna BC branding (Primary Blue #1976d2, 8px spacing grid)
+- ✅ Custom hooks for accessibility (useReducedMotion) and responsive design (useMediaQuery)
+- ✅ Separate test directory structure for WCAG AA compliance testing
 
 ```
 frontend/

@@ -1,5 +1,23 @@
 # 7. Routing
 
+This document defines the application routing structure using React Router v6, with protected routes and role-based access control aligned with Sally's user flows and security requirements.
+
+**Alignment with Sally's UX Specification:**
+- ✅ Implements Sally's 5 primary user flows: Login → Dashboard → Templates → Workflows → Tasks
+- ✅ Protected routes enforce authentication (redirect to /login if not authenticated)
+- ✅ Role-based routes implement RBAC (HR_ADMIN, LINE_MANAGER, TECH_SUPPORT, ADMINISTRATOR)
+- ✅ Lazy loading reduces initial bundle size (supports < 300KB target and LCP < 2.0s)
+- ✅ Breadcrumb navigation supports Sally's information architecture
+- ✅ 404 and 403 error pages match Sally's error state designs
+
+**Route Access Control:**
+- **/login** - Public (unauthenticated users only)
+- **/dashboard** - All authenticated users
+- **/templates** - HR_ADMIN and ADMINISTRATOR only (create/edit workflow templates)
+- **/workflows** - All authenticated users (view workflows assigned to them or their team)
+- **/tasks** - All authenticated users (complete tasks assigned to them)
+- **/users** - ADMINISTRATOR only (user management)
+
 ## Route Configuration
 
 **Main Routes (`src/routes/AppRoutes.tsx`):**

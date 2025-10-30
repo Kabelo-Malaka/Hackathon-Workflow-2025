@@ -1,5 +1,22 @@
 # 11. Frontend Developer Standards
 
+This document provides essential coding standards, quick reference guides, and critical rules to ensure consistent, maintainable code that implements Sally's UX specification correctly.
+
+**Alignment with Sally's UX Specification:**
+- ✅ Type safety rules prevent runtime errors that degrade user experience
+- ✅ Accessibility standards (data-testid, semantic HTML, ARIA) support WCAG 2.1 AA compliance
+- ✅ Performance standards (lazy loading, code splitting) support LCP < 2.0s target
+- ✅ Component standards ensure consistency with Sally's 10 core component specifications
+- ✅ Testing standards guarantee quality for Sally's 5 primary user flows
+
+**Developer Onboarding Checklist:**
+1. ✅ Read Sally's UX Specification (docs/front-end-spec.md) - understand design system and user flows
+2. ✅ Read Backend Architecture (docs/architecture/index.md) - understand API contracts and data models
+3. ✅ Install VSCode extensions: ESLint, Prettier, TypeScript, React Developer Tools
+4. ✅ Run `npm install` to install dependencies
+5. ✅ Run `npm run dev` to start development server
+6. ✅ Review this Frontend Architecture document in full
+
 ## Critical Coding Rules
 
 **Essential rules that prevent common AI mistakes:**

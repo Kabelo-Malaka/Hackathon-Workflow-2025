@@ -1,5 +1,26 @@
 # 4. Component Standards
 
+This document defines component development standards that ensure all React components follow consistent patterns for type safety, accessibility, and maintainability. These standards apply to all components, including Sally's 10 core components from the UX specification.
+
+**Alignment with Sally's UX Specification:**
+- ✅ All components implement WCAG 2.1 AA accessibility requirements (semantic HTML, ARIA labels, keyboard navigation)
+- ✅ Components use MUI base components customized with Magna BC branding (Primary Blue #1976d2, 8px spacing grid)
+- ✅ Responsive design patterns support 4 breakpoints (Mobile 0-599px, Tablet 600-959px, Desktop 960-1279px, Wide 1280px+)
+- ✅ Components include proper TypeScript interfaces matching Sally's 10 core component specifications
+- ✅ All interactive components support keyboard navigation and screen readers
+
+**Sally's 10 Core Components:**
+1. **Button** (`src/components/common/Button.tsx`) - Primary, Secondary, Tertiary variants with 44×44px touch targets
+2. **WorkflowCard** (`src/features/workflows/WorkflowCard.tsx`) - Displays workflow instances with status, progress, assignees
+3. **TaskChecklist** (`src/features/tasks/TaskChecklist.tsx`) - Interactive checklist with real-time completion tracking
+4. **KanbanBoard** (`src/features/dashboard/TaskKanbanBoard.tsx`) - Drag-and-drop task management with status columns
+5. **FilterPanel** (`src/features/dashboard/FilterPanel.tsx`) - Multi-criteria filtering (status, assignee, date, priority)
+6. **TemplateFormBuilder** (`src/features/templates/TemplateFormBuilder.tsx`) - Dynamic form creation with field types
+7. **ConditionalRuleEditor** (`src/features/templates/ConditionalRuleEditor.tsx`) - If/then conditional logic UI
+8. **ProgressTracker** (`src/components/common/ProgressTracker.tsx`) - Stepper component for workflow stages
+9. **StatusBadge** (`src/components/common/StatusBadge.tsx`) - Visual status indicators (success, warning, error)
+10. **DataTable** (`src/components/common/DataTable.tsx`) - Sortable, paginated tables with accessibility support
+
 ## Component Template
 
 All React components follow this standardized template to ensure consistency, type safety, and maintainability:

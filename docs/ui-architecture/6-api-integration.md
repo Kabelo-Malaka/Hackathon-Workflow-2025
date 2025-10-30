@@ -1,5 +1,21 @@
 # 6. API Integration
 
+This document defines how the frontend integrates with the Spring Boot backend REST API, using OpenAPI-generated TypeScript clients to ensure type safety and contract compliance.
+
+**Alignment with Sally's UX Specification:**
+- ✅ Auto-generated TypeScript client from backend OpenAPI 3.0 spec ensures frontend-backend type safety
+- ✅ Session-based authentication (15-minute timeout) integrates with Spring Security
+- ✅ Automatic 401 handling redirects to login page when session expires
+- ✅ RTK Query caching reduces API calls for dashboard (supports LCP < 2.0s performance target)
+- ✅ Optimistic updates provide immediate feedback for task completion and workflow actions
+- ✅ Error handling shows user-friendly messages aligned with Sally's error state designs
+
+**API Integration Strategy:**
+- **OpenAPI Generator:** Auto-generates TypeScript client from backend `/api-docs` endpoint on every build
+- **RTK Query:** Wraps generated client for caching, invalidation, and optimistic updates
+- **Axios Interceptors:** Global error handling (401 → logout, 403 → forbidden page, network errors)
+- **Type Safety:** Generated types ensure compile-time validation of API contracts
+
 ## Service Template
 
 **Axios Instance Configuration (`src/services/api.service.ts`):**

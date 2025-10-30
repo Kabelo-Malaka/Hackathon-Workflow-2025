@@ -1,5 +1,25 @@
 # 8. Styling Guidelines
 
+This document defines styling standards using Material-UI and Emotion, implementing Sally's comprehensive design system including Magna BC branding, responsive breakpoints, and accessibility requirements.
+
+**Alignment with Sally's UX Specification:**
+- ✅ Magna BC brand colors (Primary Blue #1976d2, Success Green #2e7d32, Error Red #d32f2f)
+- ✅ 8px spacing grid system (4px, 8px, 16px, 24px, 32px) for consistent vertical rhythm
+- ✅ 4-breakpoint responsive strategy:
+  - **Mobile:** 0-599px (xs)
+  - **Tablet:** 600-959px (sm-md)
+  - **Desktop:** 960-1279px (md-lg)
+  - **Wide:** 1280px+ (lg-xl)
+- ✅ Typography system with Roboto font family (Material Design standard)
+- ✅ WCAG 2.1 AA compliant color contrast ratios (4.5:1 for text, 3:1 for UI components)
+- ✅ Consistent elevation system (shadows) for visual hierarchy
+- ✅ 44×44px minimum touch targets for mobile accessibility
+
+**Styling Methods Priority:**
+1. **MUI `sx` prop** - One-off component styles (preferred for most cases)
+2. **MUI `styled` API** - Reusable styled components (for repeated patterns)
+3. **CSS custom properties** - Global theme variables (defined in `variables.css`)
+
 ## Styling Approach
 
 The application uses **Material-UI (MUI)** with **Emotion** for styling. Three styling methods are available:

@@ -1,5 +1,22 @@
 # 5. State Management
 
+This document defines state management patterns using Redux Toolkit and RTK Query to support the complex user interactions and real-time updates required by Sally's UX specification.
+
+**Alignment with Sally's UX Specification:**
+- ✅ Supports real-time task updates for KanbanBoard (drag-and-drop state management)
+- ✅ Manages complex filter state for FilterPanel (status, assignee, date, priority combinations)
+- ✅ Handles template builder state for TemplateFormBuilder (dynamic fields, conditional rules, validation)
+- ✅ Tracks workflow progress for ProgressTracker (current step, completion status, navigation)
+- ✅ Caches dashboard data for fast navigation (LCP < 2.0s performance target)
+- ✅ Optimistic updates for task completion (immediate UI feedback while API calls execute)
+- ✅ Session management with 15-minute timeout (backend Spring Security integration)
+
+**State Management Strategy:**
+- **UI State (Redux Slices):** Filters, modal dialogs, view preferences, selected items
+- **Server State (RTK Query):** API data, caching, automatic refetching, optimistic updates
+- **Form State (React Hook Form):** Template builder, task completion, user forms (not Redux)
+- **Component State (useState):** Accordion expand/collapse, tooltip visibility, local UI toggles
+
 ## Store Structure
 
 The application uses **Redux Toolkit** for global state management and **RTK Query** for server state (API data fetching and caching).
