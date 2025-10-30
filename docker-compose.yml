@@ -1,17 +1,68 @@
-# Docker Compose Configuration for Employee Lifecycle Management System
-# NOTE: This is a placeholder configuration. Full implementation in Story 1.2.
-
 version: '3.8'
 
 services:
   postgres:
     image: postgres:17.2-alpine
-    # Full configuration to be added in Story 1.2
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: employee_lifecycle
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 4g
 
   backend:
     build: ./backend
-    # Full configuration to be added in Story 1.2
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: employee_lifecycle
+      DB_USERNAME: postgres
+      DB_PASSWORD: ${DB_PASSWORD}
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 465
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 2g
 
   frontend:
     build: ./frontend
-    # Full configuration to be added in Story 1.2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend/nginx.conf:/etc/nginx/nginx.conf:ro
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+volumes:
+  postgres_data:
