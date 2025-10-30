@@ -1,35 +1,63 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useDispatch } from 'react-redux';
+import { CircularProgress, Box } from '@mui/material';
+import { LoginPage } from './components/auth/LoginPage';
+import { DashboardPage } from './components/dashboard/DashboardPage';
+import { ProtectedRoute } from './components/common/ProtectedRoute';
+import { AppLayout } from './components/common/AppLayout';
+import { useCheckSessionQuery } from './features/auth/authApi';
+import { setUser, clearUser, setLoading } from './features/auth/authSlice';
 
 function App() {
-  const [count, setCount] = useState(0)
+  const dispatch = useDispatch();
+  const { data: user, isLoading, isError } = useCheckSessionQuery();
+
+  // Task 5: Session persistence - check session on app load
+  useEffect(() => {
+    if (isLoading) {
+      dispatch(setLoading(true));
+    } else if (isError) {
+      // No active session
+      dispatch(clearUser());
+    } else if (user) {
+      // Valid session exists
+      dispatch(setUser(user));
+    }
+  }, [user, isLoading, isError, dispatch]);
+
+  if (isLoading) {
+    return (
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        minHeight="100vh"
+      >
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <AppLayout>
+                <DashboardPage />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
-export default App
+export default App;

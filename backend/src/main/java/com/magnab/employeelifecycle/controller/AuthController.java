@@ -2,7 +2,10 @@ package com.magnab.employeelifecycle.controller;
 
 import com.magnab.employeelifecycle.dto.request.LoginRequest;
 import com.magnab.employeelifecycle.dto.response.AuthResponse;
+import com.magnab.employeelifecycle.dto.response.UserResponse;
+import com.magnab.employeelifecycle.entity.User;
 import com.magnab.employeelifecycle.enums.UserRole;
+import com.magnab.employeelifecycle.repository.UserRepository;
 import com.magnab.employeelifecycle.service.AuditService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -31,10 +34,12 @@ public class AuthController {
 
     private final AuthenticationManager authenticationManager;
     private final AuditService auditService;
+    private final UserRepository userRepository;
 
-    public AuthController(AuthenticationManager authenticationManager, AuditService auditService) {
+    public AuthController(AuthenticationManager authenticationManager, AuditService auditService, UserRepository userRepository) {
         this.authenticationManager = authenticationManager;
         this.auditService = auditService;
+        this.userRepository = userRepository;
     }
 
     @PostMapping("/login")
@@ -99,6 +104,36 @@ public class AuthController {
         Map<String, String> response = new HashMap<>();
         response.put("message", "Logout successful");
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<?> getCurrentUser() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("timestamp", java.time.LocalDateTime.now().toString());
+            errorResponse.put("status", 401);
+            errorResponse.put("error", "Unauthorized");
+            errorResponse.put("message", "No active session");
+            errorResponse.put("path", "/api/auth/me");
+            return ResponseEntity.status(401).body(errorResponse);
+        }
+
+        String username = authentication.getName();
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new IllegalStateException("Authenticated user not found in database"));
+
+        UserResponse userResponse = new UserResponse();
+        userResponse.setId(user.getId());
+        userResponse.setUsername(user.getUsername());
+        userResponse.setEmail(user.getEmail());
+        userResponse.setRole(user.getRole());
+        userResponse.setIsActive(user.getIsActive());
+        userResponse.setCreatedAt(user.getCreatedAt());
+        userResponse.setUpdatedAt(user.getUpdatedAt());
+
+        return ResponseEntity.ok(userResponse);
     }
 
     private UserRole extractRole(Authentication authentication) {

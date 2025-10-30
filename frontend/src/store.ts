@@ -1,12 +1,17 @@
 import { configureStore } from '@reduxjs/toolkit';
+import { authApi } from './features/auth/authApi';
+import authReducer from './features/auth/authSlice';
 
 // Redux store configuration
 // Feature slices will be added as stories are implemented
 
 export const store = configureStore({
   reducer: {
-    // Add slice reducers here as they are implemented
+    auth: authReducer,
+    [authApi.reducerPath]: authApi.reducer,
   },
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware().concat(authApi.middleware),
 });
 
 export type RootState = ReturnType<typeof store.getState>;
