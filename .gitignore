@@ -1,0 +1,21 @@
+# Node.js / Frontend
+node_modules/
+dist/
+coverage/
+.env
+
+# Java / Backend
+target/
+*.class
+.mvn/
+*.jar
+*.war
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Environment files (keep .env.example)
+.env

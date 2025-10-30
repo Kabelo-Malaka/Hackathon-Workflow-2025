@@ -1,0 +1,17 @@
+# Docker Compose Configuration for Employee Lifecycle Management System
+# NOTE: This is a placeholder configuration. Full implementation in Story 1.2.
+
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:17.2-alpine
+    # Full configuration to be added in Story 1.2
+
+  backend:
+    build: ./backend
+    # Full configuration to be added in Story 1.2
+
+  frontend:
+    build: ./frontend
+    # Full configuration to be added in Story 1.2

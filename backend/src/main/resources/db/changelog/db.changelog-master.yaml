@@ -1,0 +1,3 @@
+databaseChangeLog:
+  # Database schema migrations will be added starting with Story 1.3
+  # This is a placeholder file to ensure Liquibase is configured correctly
