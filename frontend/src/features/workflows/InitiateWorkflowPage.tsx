@@ -148,20 +148,35 @@ export const InitiateWorkflowPage: React.FC = () => {
         navigate(`/workflows/${response.workflowInstanceId}`);
       }, 1500);
     } catch (error: unknown) {
-      // Handle validation errors
-      if (error.status === 400 && error.data?.errors) {
-        // Set field-level errors
-        Object.entries(error.data.errors).forEach(([field, message]) => {
-          setError(field as any, {
-            type: 'manual',
-            message: message as string,
+      // Handle validation errors with proper type narrowing
+      if (
+        error &&
+        typeof error === 'object' &&
+        'status' in error &&
+        'data' in error
+      ) {
+        const apiError = error as {
+          status: number;
+          data?: { errors?: Record<string, string>; message?: string };
+        };
+
+        if (apiError.status === 400 && apiError.data?.errors) {
+          // Set field-level errors
+          Object.entries(apiError.data.errors).forEach(([field, message]) => {
+            setError(field as keyof InitiateWorkflowFormData, {
+              type: 'manual',
+              message: message,
+            });
           });
-        });
+        } else {
+          // Show general error message
+          setErrorMessage(
+            apiError.data?.message ||
+              'Failed to initiate workflow. Please try again.'
+          );
+        }
       } else {
-        // Show general error message
-        setErrorMessage(
-          error.data?.message || 'Failed to initiate workflow. Please try again.'
-        );
+        setErrorMessage('Failed to initiate workflow. Please try again.');
       }
     }
   };
@@ -288,7 +303,7 @@ export const InitiateWorkflowPage: React.FC = () => {
                     margin="normal"
                     label={field.label}
                     required={field.required}
-                    {...register(fieldName)}
+                    {...register(fieldName as `customFieldValues.${string}`)}
                     error={!!fieldError}
                     helperText={fieldError?.message}
                     data-testid={`custom-field-${field.name}`}
@@ -306,7 +321,7 @@ export const InitiateWorkflowPage: React.FC = () => {
                     type="number"
                     label={field.label}
                     required={field.required}
-                    {...register(fieldName)}
+                    {...register(fieldName as `customFieldValues.${string}`)}
                     error={!!fieldError}
                     helperText={fieldError?.message}
                     data-testid={`custom-field-${field.name}`}
@@ -333,7 +348,9 @@ export const InitiateWorkflowPage: React.FC = () => {
                             required: field.required,
                             error: !!fieldError,
                             helperText: fieldError?.message,
-                            'data-testid': `custom-field-${field.name}`,
+                            inputProps: {
+                              'data-testid': `custom-field-${field.name}`,
+                            },
                           },
                         }}
                       />

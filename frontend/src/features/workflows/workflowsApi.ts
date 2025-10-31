@@ -24,7 +24,7 @@ export const workflowsApi = createApi({
     }),
     getTemplateById: builder.query<WorkflowTemplate, string>({
       query: (id) => `/templates/${id}`,
-      providesTags: (result, error, id) => [{ type: 'Templates', id }],
+      providesTags: (_result, _error, id) => [{ type: 'Templates', id }],
     }),
     initiateWorkflow: builder.mutation<
       WorkflowInitiationResponse,
