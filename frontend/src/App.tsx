@@ -5,6 +5,7 @@ import { CircularProgress, Box } from '@mui/material';
 import { LoginPage } from './components/auth/LoginPage';
 import { DashboardPage } from './components/dashboard/DashboardPage';
 import { UserManagementPage } from './components/users/UserManagementPage';
+import { TemplateBuilderPage } from './components/templates/TemplateBuilderPage';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
 import { AppLayout } from './components/common/AppLayout';
 import { useCheckSessionQuery } from './features/auth/authApi';
@@ -60,6 +61,26 @@ function App() {
             <ProtectedRoute>
               <AppLayout>
                 <UserManagementPage />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/templates/new"
+          element={
+            <ProtectedRoute>
+              <AppLayout>
+                <TemplateBuilderPage />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/templates/edit/:id"
+          element={
+            <ProtectedRoute>
+              <AppLayout>
+                <TemplateBuilderPage />
               </AppLayout>
             </ProtectedRoute>
           }
