@@ -35,7 +35,6 @@ public class UpdateTemplateRequest {
     private Boolean isActive;
 
     @NotNull(message = "Tasks are required")
-    @Size(min = 1, message = "Template must have at least one task")
     @Valid
     private List<CreateTemplateTaskRequest> tasks;
 }

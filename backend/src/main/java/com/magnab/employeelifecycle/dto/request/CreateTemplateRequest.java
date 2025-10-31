@@ -32,7 +32,6 @@ public class CreateTemplateRequest {
     private WorkflowType type;
 
     @NotNull(message = "Tasks are required")
-    @Size(min = 1, message = "Template must have at least one task")
     @Valid
     private List<CreateTemplateTaskRequest> tasks;
 }

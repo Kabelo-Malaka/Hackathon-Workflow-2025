@@ -12,6 +12,7 @@ import com.magnab.employeelifecycle.enums.UserRole;
 import com.magnab.employeelifecycle.enums.WorkflowStatus;
 import com.magnab.employeelifecycle.enums.WorkflowType;
 import com.magnab.employeelifecycle.exception.ResourceNotFoundException;
+import com.magnab.employeelifecycle.exception.ValidationException;
 import com.magnab.employeelifecycle.repository.TemplateTaskRepository;
 import com.magnab.employeelifecycle.repository.UserRepository;
 import com.magnab.employeelifecycle.repository.WorkflowTemplateRepository;
@@ -455,5 +456,207 @@ class TemplateServiceTest {
         request.setSequenceOrder(sequence);
         request.setIsParallel(false);
         return request;
+    }
+
+    // === STORY 2.3: VALIDATION TESTS ===
+
+    @Test
+    void createTemplate_WithZeroTasks_ThrowsValidationException() {
+        // Arrange
+        CreateTemplateRequest request = new CreateTemplateRequest();
+        request.setName("Empty Template");
+        request.setType(WorkflowType.ONBOARDING);
+        request.setTasks(List.of()); // Empty task list
+
+        // Act & Assert
+        ValidationException exception = assertThrows(
+            ValidationException.class,
+            () -> templateService.createTemplate(request)
+        );
+
+        assertEquals("Template must have at least one task", exception.getMessage());
+        verify(templateRepository, never()).save(any());
+    }
+
+    @Test
+    void createTemplate_WithDuplicateSequenceOrderNonParallel_ThrowsValidationException() {
+        // Arrange
+        CreateTemplateRequest request = new CreateTemplateRequest();
+        request.setName("Template with Duplicate Sequences");
+        request.setType(WorkflowType.ONBOARDING);
+
+        CreateTemplateTaskRequest task1 = createTaskRequest("Task 1", UserRole.HR_ADMIN, 1);
+        task1.setIsParallel(false);
+
+        CreateTemplateTaskRequest task2 = createTaskRequest("Task 2", UserRole.HR_ADMIN, 1);
+        task2.setIsParallel(false); // Same sequence but not parallel
+
+        request.setTasks(List.of(task1, task2));
+
+        // Act & Assert
+        ValidationException exception = assertThrows(
+            ValidationException.class,
+            () -> templateService.createTemplate(request)
+        );
+
+        assertTrue(exception.getMessage().contains("sequence order 1"));
+        assertTrue(exception.getMessage().contains("must be marked as parallel or have unique sequence orders"));
+        verify(templateRepository, never()).save(any());
+    }
+
+    @Test
+    void createTemplate_WithParallelTasks_CreatesSuccessfully() {
+        // Arrange
+        CreateTemplateRequest request = new CreateTemplateRequest();
+        request.setName("Template with Parallel Tasks");
+        request.setType(WorkflowType.ONBOARDING);
+
+        CreateTemplateTaskRequest task1 = createTaskRequest("Parallel Task 1", UserRole.HR_ADMIN, 1);
+        task1.setIsParallel(true);
+
+        CreateTemplateTaskRequest task2 = createTaskRequest("Parallel Task 2", UserRole.TECH_SUPPORT, 1);
+        task2.setIsParallel(true); // Same sequence, both parallel
+
+        CreateTemplateTaskRequest task3 = createTaskRequest("Sequential Task", UserRole.LINE_MANAGER, 2);
+        task3.setIsParallel(false);
+
+        request.setTasks(List.of(task1, task2, task3));
+
+        WorkflowTemplate savedTemplate = createMockTemplate();
+        when(templateRepository.save(any(WorkflowTemplate.class))).thenReturn(savedTemplate);
+
+        // Act
+        TemplateDetailResponse result = templateService.createTemplate(request);
+
+        // Assert
+        assertNotNull(result);
+        verify(templateRepository).save(any(WorkflowTemplate.class));
+    }
+
+    @Test
+    void createTemplate_SequenceNormalization_RemovesGaps() {
+        // Arrange
+        CreateTemplateRequest request = new CreateTemplateRequest();
+        request.setName("Template with Gaps");
+        request.setType(WorkflowType.ONBOARDING);
+
+        // Create tasks with gaps: 1, 5, 10
+        request.setTasks(List.of(
+            createTaskRequest("Task 1", UserRole.HR_ADMIN, 1),
+            createTaskRequest("Task 2", UserRole.HR_ADMIN, 5),
+            createTaskRequest("Task 3", UserRole.HR_ADMIN, 10)
+        ));
+
+        WorkflowTemplate savedTemplate = createMockTemplate();
+        when(templateRepository.save(any(WorkflowTemplate.class))).thenReturn(savedTemplate);
+
+        // Act
+        templateService.createTemplate(request);
+
+        // Assert
+        ArgumentCaptor<WorkflowTemplate> captor = ArgumentCaptor.forClass(WorkflowTemplate.class);
+        verify(templateRepository).save(captor.capture());
+
+        WorkflowTemplate captured = captor.getValue();
+        List<TemplateTask> tasks = captured.getTasks();
+
+        // Should be normalized to 1, 2, 3
+        assertEquals(1, tasks.get(0).getSequenceOrder());
+        assertEquals(2, tasks.get(1).getSequenceOrder());
+        assertEquals(3, tasks.get(2).getSequenceOrder());
+    }
+
+    @Test
+    void createTemplate_SequenceNormalization_PreservesParallelGrouping() {
+        // Arrange
+        CreateTemplateRequest request = new CreateTemplateRequest();
+        request.setName("Template with Parallel and Gaps");
+        request.setType(WorkflowType.ONBOARDING);
+
+        CreateTemplateTaskRequest task1 = createTaskRequest("Task 1", UserRole.HR_ADMIN, 1);
+        task1.setIsParallel(true);
+
+        CreateTemplateTaskRequest task2 = createTaskRequest("Task 2", UserRole.HR_ADMIN, 1);
+        task2.setIsParallel(true);
+
+        CreateTemplateTaskRequest task3 = createTaskRequest("Task 3", UserRole.HR_ADMIN, 5);
+        task3.setIsParallel(false);
+
+        request.setTasks(List.of(task1, task2, task3));
+
+        WorkflowTemplate savedTemplate = createMockTemplate();
+        when(templateRepository.save(any(WorkflowTemplate.class))).thenReturn(savedTemplate);
+
+        // Act
+        templateService.createTemplate(request);
+
+        // Assert
+        ArgumentCaptor<WorkflowTemplate> captor = ArgumentCaptor.forClass(WorkflowTemplate.class);
+        verify(templateRepository).save(captor.capture());
+
+        WorkflowTemplate captured = captor.getValue();
+        List<TemplateTask> tasks = captured.getTasks();
+
+        // Parallel tasks should remain at sequence 1, solo task should be sequence 2
+        assertEquals(1, tasks.get(0).getSequenceOrder());
+        assertEquals(1, tasks.get(1).getSequenceOrder());
+        assertEquals(2, tasks.get(2).getSequenceOrder());
+    }
+
+    @Test
+    void updateTemplate_WithZeroTasks_ThrowsValidationException() {
+        // Arrange
+        UUID templateId = UUID.randomUUID();
+        mockTemplate.setId(templateId);
+        when(templateRepository.findById(templateId)).thenReturn(Optional.of(mockTemplate));
+
+        UpdateTemplateRequest request = new UpdateTemplateRequest();
+        request.setName("Updated Template");
+        request.setType(WorkflowType.ONBOARDING);
+        request.setIsActive(true);
+        request.setTasks(List.of()); // Empty
+
+        // Act & Assert
+        ValidationException exception = assertThrows(
+            ValidationException.class,
+            () -> templateService.updateTemplate(templateId, request)
+        );
+
+        assertEquals("Template must have at least one task", exception.getMessage());
+        verify(templateRepository).findById(templateId);
+        verify(templateRepository, never()).save(any());
+    }
+
+    @Test
+    void updateTemplate_WithValidData_NormalizesAndValidates() {
+        // Arrange
+        UUID templateId = UUID.randomUUID();
+        mockTemplate.setId(templateId);
+        when(templateRepository.findById(templateId)).thenReturn(Optional.of(mockTemplate));
+        when(templateRepository.save(any(WorkflowTemplate.class))).thenReturn(mockTemplate);
+
+        UpdateTemplateRequest request = new UpdateTemplateRequest();
+        request.setName("Updated Template");
+        request.setType(WorkflowType.ONBOARDING);
+        request.setIsActive(true);
+        request.setTasks(List.of(
+            createTaskRequest("Task 1", UserRole.HR_ADMIN, 1),
+            createTaskRequest("Task 2", UserRole.HR_ADMIN, 5) // Gap should be normalized
+        ));
+
+        // Act
+        TemplateDetailResponse result = templateService.updateTemplate(templateId, request);
+
+        // Assert
+        assertNotNull(result);
+        ArgumentCaptor<WorkflowTemplate> captor = ArgumentCaptor.forClass(WorkflowTemplate.class);
+        verify(templateRepository).save(captor.capture());
+
+        WorkflowTemplate captured = captor.getValue();
+        List<TemplateTask> tasks = captured.getTasks();
+
+        // Should be normalized to 1, 2
+        assertEquals(1, tasks.get(0).getSequenceOrder());
+        assertEquals(2, tasks.get(1).getSequenceOrder());
     }
 }

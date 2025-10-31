@@ -10,6 +10,7 @@ import com.magnab.employeelifecycle.entity.TemplateTask;
 import com.magnab.employeelifecycle.entity.User;
 import com.magnab.employeelifecycle.entity.WorkflowTemplate;
 import com.magnab.employeelifecycle.exception.ResourceNotFoundException;
+import com.magnab.employeelifecycle.exception.ValidationException;
 import com.magnab.employeelifecycle.repository.TemplateTaskRepository;
 import com.magnab.employeelifecycle.repository.UserRepository;
 import com.magnab.employeelifecycle.repository.WorkflowTemplateRepository;
@@ -19,8 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -69,6 +69,10 @@ public class TemplateService {
             task.setUpdatedBy(userId);
             template.getTasks().add(task);
         }
+
+        // Story 2.3: Normalize sequence order and validate template
+        normalizeSequenceOrder(template.getTasks());
+        validateTemplate(template);
 
         WorkflowTemplate saved = templateRepository.save(template);
         return toDetailResponse(saved);
@@ -136,6 +140,10 @@ public class TemplateService {
             task.setUpdatedBy(userId);
             template.getTasks().add(task);
         }
+
+        // Story 2.3: Normalize sequence order and validate template
+        normalizeSequenceOrder(template.getTasks());
+        validateTemplate(template);
 
         WorkflowTemplate updated = templateRepository.save(template);
         return toDetailResponse(updated);
@@ -239,5 +247,192 @@ public class TemplateService {
         String currentUsername = auth.getName();
         return userRepository.findByUsername(currentUsername)
                 .orElseThrow(() -> new ResourceNotFoundException("Current authenticated user not found: " + currentUsername));
+    }
+
+    // === Story 2.3: Template Validation Methods ===
+
+    /**
+     * Validates template for logical consistency.
+     * Checks: minimum tasks, unique sequence orders, parallel task configuration, valid dependencies, no circular dependencies.
+     *
+     * @param template Template to validate
+     * @throws ValidationException if validation fails with specific error message
+     */
+    private void validateTemplate(WorkflowTemplate template) {
+        List<TemplateTask> tasks = template.getTasks();
+
+        // AC4: Template must have at least one task
+        if (tasks == null || tasks.isEmpty()) {
+            throw new ValidationException("Template must have at least one task");
+        }
+
+        // AC2: Validate sequence order uniqueness and parallel task configuration
+        validateSequenceOrders(tasks);
+
+        // AC2: Validate dependency task IDs reference valid tasks
+        validateDependencies(tasks);
+
+        // AC6: Detect circular dependencies
+        detectCircularDependencies(tasks);
+    }
+
+    /**
+     * Validates sequence order rules:
+     * - Non-parallel tasks must have unique sequence_order values
+     * - Parallel tasks (isParallel=true) must have the same sequence_order
+     *
+     * @param tasks List of tasks to validate
+     * @throws ValidationException if validation fails
+     */
+    private void validateSequenceOrders(List<TemplateTask> tasks) {
+        // Group tasks by sequence order
+        Map<Integer, List<TemplateTask>> tasksBySequence = new HashMap<>();
+        for (TemplateTask task : tasks) {
+            tasksBySequence
+                    .computeIfAbsent(task.getSequenceOrder(), k -> new ArrayList<>())
+                    .add(task);
+        }
+
+        // Check each sequence order group
+        for (Map.Entry<Integer, List<TemplateTask>> entry : tasksBySequence.entrySet()) {
+            Integer sequenceOrder = entry.getKey();
+            List<TemplateTask> tasksAtSequence = entry.getValue();
+
+            if (tasksAtSequence.size() > 1) {
+                // Multiple tasks at same sequence order - all must be parallel
+                boolean allParallel = tasksAtSequence.stream().allMatch(TemplateTask::getIsParallel);
+                if (!allParallel) {
+                    throw new ValidationException(
+                            String.format("Tasks with sequence order %d must be marked as parallel or have unique sequence orders",
+                                    sequenceOrder));
+                }
+            }
+        }
+
+        // Check parallel tasks have same sequence order (validate they're grouped correctly)
+        for (TemplateTask task : tasks) {
+            if (task.getIsParallel()) {
+                List<TemplateTask> parallelGroup = tasksBySequence.get(task.getSequenceOrder());
+                if (parallelGroup.size() == 1) {
+                    // Parallel task but no other tasks at same sequence order - this is actually OK
+                    // User might mark a task as parallel in preparation for adding more tasks later
+                }
+            }
+        }
+    }
+
+    /**
+     * Validates that all dependency_task_id values reference valid tasks within the same template.
+     *
+     * @param tasks List of tasks to validate
+     * @throws ValidationException if any dependency references a non-existent task
+     */
+    private void validateDependencies(List<TemplateTask> tasks) {
+        Set<UUID> validTaskIds = tasks.stream()
+                .filter(t -> t.getId() != null)
+                .map(TemplateTask::getId)
+                .collect(Collectors.toSet());
+
+        for (TemplateTask task : tasks) {
+            if (task.getDependsOnTask() != null) {
+                UUID dependencyId = task.getDependsOnTask().getId();
+                if (dependencyId != null && !validTaskIds.contains(dependencyId)) {
+                    throw new ValidationException(
+                            String.format("Task '%s' references non-existent dependency task", task.getTaskName()));
+                }
+            }
+        }
+    }
+
+    /**
+     * Detects circular dependencies in task dependency graph using depth-first search.
+     *
+     * @param tasks List of tasks to check
+     * @throws ValidationException if circular dependency is detected
+     */
+    private void detectCircularDependencies(List<TemplateTask> tasks) {
+        Set<UUID> visited = new HashSet<>();
+
+        for (TemplateTask task : tasks) {
+            if (task.getDependsOnTask() != null && task.getId() != null) {
+                Set<UUID> recursionStack = new HashSet<>();
+                detectCircularDependency(task, tasks, visited, recursionStack);
+            }
+        }
+    }
+
+    /**
+     * Recursive depth-first search to detect circular dependencies.
+     *
+     * @param task           Current task being checked
+     * @param allTasks       All tasks in the template
+     * @param visited        Set of tasks already fully processed
+     * @param recursionStack Set of tasks in current recursion path
+     * @throws ValidationException if circular dependency is detected
+     */
+    private void detectCircularDependency(TemplateTask task, List<TemplateTask> allTasks,
+                                          Set<UUID> visited, Set<UUID> recursionStack) {
+        if (task.getId() == null) {
+            return; // Skip tasks without IDs (new tasks not yet persisted)
+        }
+
+        if (recursionStack.contains(task.getId())) {
+            throw new ValidationException(
+                    String.format("Circular dependency detected: Task '%s' (id: %s) has circular dependency chain",
+                            task.getTaskName(), task.getId()));
+        }
+
+        if (visited.contains(task.getId())) {
+            return; // Already processed this task
+        }
+
+        visited.add(task.getId());
+        recursionStack.add(task.getId());
+
+        if (task.getDependsOnTask() != null && task.getDependsOnTask().getId() != null) {
+            UUID dependencyId = task.getDependsOnTask().getId();
+
+            // Find dependency task
+            TemplateTask dependencyTask = allTasks.stream()
+                    .filter(t -> t.getId() != null && t.getId().equals(dependencyId))
+                    .findFirst()
+                    .orElse(null);
+
+            if (dependencyTask != null) {
+                detectCircularDependency(dependencyTask, allTasks, visited, recursionStack);
+            }
+        }
+
+        recursionStack.remove(task.getId());
+    }
+
+    /**
+     * Normalizes sequence order by removing gaps.
+     * Example: [1, 3, 5] → [1, 2, 3]
+     * Preserves parallel task grouping: [1, 1, 3] → [1, 1, 2]
+     *
+     * @param tasks List of tasks to normalize (modified in place)
+     */
+    private void normalizeSequenceOrder(List<TemplateTask> tasks) {
+        if (tasks == null || tasks.isEmpty()) {
+            return;
+        }
+
+        // Sort tasks by current sequence_order
+        tasks.sort(Comparator.comparing(TemplateTask::getSequenceOrder));
+
+        int currentOrder = 1;
+        Integer previousOrder = null;
+
+        for (TemplateTask task : tasks) {
+            // If sequence_order changed, increment
+            if (previousOrder == null || !task.getSequenceOrder().equals(previousOrder)) {
+                if (previousOrder != null) {
+                    currentOrder++;
+                }
+                previousOrder = task.getSequenceOrder();
+            }
+            task.setSequenceOrder(currentOrder);
+        }
     }
 }

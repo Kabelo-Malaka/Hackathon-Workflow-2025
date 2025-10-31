@@ -44,10 +44,16 @@ public class TemplateController {
      */
     @PostMapping
     @Operation(summary = "Create a new workflow template",
-               description = "Creates a new workflow template with associated tasks")
+               description = "Creates a new workflow template with associated tasks. " +
+                           "Validates: minimum 1 task, unique sequence orders for non-parallel tasks, " +
+                           "valid dependencies, no circular dependencies. Automatically normalizes sequence gaps.")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "201", description = "Template created successfully"),
-        @ApiResponse(responseCode = "400", description = "Invalid request data"),
+        @ApiResponse(responseCode = "400", description = "Invalid request data. Possible validation errors: " +
+                    "template must have at least one task, " +
+                    "non-parallel tasks must have unique sequence orders, " +
+                    "dependency references non-existent task, " +
+                    "circular dependency detected"),
         @ApiResponse(responseCode = "401", description = "Unauthorized"),
         @ApiResponse(responseCode = "403", description = "Forbidden - requires HR_ADMIN or ADMINISTRATOR role")
     })
@@ -107,10 +113,16 @@ public class TemplateController {
      */
     @PutMapping("/{id}")
     @Operation(summary = "Update a workflow template",
-               description = "Updates an existing workflow template and replaces all associated tasks")
+               description = "Updates an existing workflow template and replaces all associated tasks. " +
+                           "Validates: minimum 1 task, unique sequence orders for non-parallel tasks, " +
+                           "valid dependencies, no circular dependencies. Automatically normalizes sequence gaps.")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Template updated successfully"),
-        @ApiResponse(responseCode = "400", description = "Invalid request data"),
+        @ApiResponse(responseCode = "400", description = "Invalid request data. Possible validation errors: " +
+                    "template must have at least one task, " +
+                    "non-parallel tasks must have unique sequence orders, " +
+                    "dependency references non-existent task, " +
+                    "circular dependency detected"),
         @ApiResponse(responseCode = "401", description = "Unauthorized"),
         @ApiResponse(responseCode = "403", description = "Forbidden - requires HR_ADMIN or ADMINISTRATOR role"),
         @ApiResponse(responseCode = "404", description = "Template not found")

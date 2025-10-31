@@ -407,6 +407,157 @@ class TemplateControllerIntegrationTest {
             .andExpect(status().isForbidden());
     }
 
+    // === STORY 2.3: VALIDATION INTEGRATION TESTS ===
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"HR_ADMIN"})
+    void createTemplate_WithZeroTasks_Returns400() throws Exception {
+        CreateTemplateRequest request = new CreateTemplateRequest();
+        request.setName("Empty Template");
+        request.setType(WorkflowType.ONBOARDING);
+        request.setTasks(List.of()); // Empty task list
+
+        mockMvc.perform(post("/api/templates")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").value("Template must have at least one task"));
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"HR_ADMIN"})
+    void createTemplate_WithDuplicateSequenceNonParallel_Returns400() throws Exception {
+        CreateTemplateRequest request = new CreateTemplateRequest();
+        request.setName("Template with Duplicate Sequences");
+        request.setType(WorkflowType.ONBOARDING);
+        request.setTasks(List.of(
+            createTaskRequest("Task 1", UserRole.HR_ADMIN, 1, false, null),
+            createTaskRequest("Task 2", UserRole.HR_ADMIN, 1, false, null) // Duplicate sequence, not parallel
+        ));
+
+        mockMvc.perform(post("/api/templates")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").value(containsString("sequence order 1")))
+            .andExpect(jsonPath("$.message").value(containsString("must be marked as parallel or have unique sequence orders")));
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"HR_ADMIN"})
+    void createTemplate_WithValidParallelTasks_Returns201() throws Exception {
+        CreateTemplateRequest request = new CreateTemplateRequest();
+        request.setName("Template with Parallel Tasks");
+        request.setType(WorkflowType.ONBOARDING);
+        request.setTasks(List.of(
+            createTaskRequest("Parallel Task 1", UserRole.HR_ADMIN, 1, true, null),
+            createTaskRequest("Parallel Task 2", UserRole.TECH_SUPPORT, 1, true, null),
+            createTaskRequest("Sequential Task", UserRole.LINE_MANAGER, 2, false, null)
+        ));
+
+        mockMvc.perform(post("/api/templates")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.tasks", hasSize(3)))
+            .andExpect(jsonPath("$.tasks[0].sequenceOrder").value(1))
+            .andExpect(jsonPath("$.tasks[1].sequenceOrder").value(1))
+            .andExpect(jsonPath("$.tasks[2].sequenceOrder").value(2));
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"HR_ADMIN"})
+    void createTemplate_SequenceNormalization_RemovesGaps() throws Exception {
+        CreateTemplateRequest request = new CreateTemplateRequest();
+        request.setName("Template with Gaps");
+        request.setType(WorkflowType.ONBOARDING);
+        request.setTasks(List.of(
+            createTaskRequest("Task 1", UserRole.HR_ADMIN, 1, false, null),
+            createTaskRequest("Task 2", UserRole.HR_ADMIN, 5, false, null),
+            createTaskRequest("Task 3", UserRole.HR_ADMIN, 10, false, null)
+        ));
+
+        mockMvc.perform(post("/api/templates")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.tasks", hasSize(3)))
+            .andExpect(jsonPath("$.tasks[0].sequenceOrder").value(1))
+            .andExpect(jsonPath("$.tasks[1].sequenceOrder").value(2))
+            .andExpect(jsonPath("$.tasks[2].sequenceOrder").value(3));
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"HR_ADMIN"})
+    void updateTemplate_WithZeroTasks_Returns400() throws Exception {
+        // First create a template
+        CreateTemplateRequest createRequest = createValidTemplateRequest("Template for Zero Tasks Test " + System.currentTimeMillis());
+        MvcResult createResult = mockMvc.perform(post("/api/templates")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(createRequest)))
+            .andExpect(status().isCreated())
+            .andReturn();
+
+        TemplateDetailResponse created = objectMapper.readValue(
+            createResult.getResponse().getContentAsString(),
+            TemplateDetailResponse.class
+        );
+
+        // Try to update with zero tasks
+        UpdateTemplateRequest updateRequest = new UpdateTemplateRequest();
+        updateRequest.setName("Updated Template");
+        updateRequest.setType(WorkflowType.ONBOARDING);
+        updateRequest.setIsActive(true);
+        updateRequest.setTasks(List.of()); // Empty
+
+        mockMvc.perform(put("/api/templates/{id}", created.getId())
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(updateRequest)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").value("Template must have at least one task"));
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"HR_ADMIN"})
+    void updateTemplate_WithValidationErrors_Returns400() throws Exception {
+        // First create a template
+        CreateTemplateRequest createRequest = createValidTemplateRequest("Template for Validation Errors Test " + System.currentTimeMillis());
+        MvcResult createResult = mockMvc.perform(post("/api/templates")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(createRequest)))
+            .andExpect(status().isCreated())
+            .andReturn();
+
+        TemplateDetailResponse created = objectMapper.readValue(
+            createResult.getResponse().getContentAsString(),
+            TemplateDetailResponse.class
+        );
+
+        // Try to update with duplicate sequences (non-parallel)
+        UpdateTemplateRequest updateRequest = new UpdateTemplateRequest();
+        updateRequest.setName("Updated Template");
+        updateRequest.setType(WorkflowType.ONBOARDING);
+        updateRequest.setIsActive(true);
+        updateRequest.setTasks(List.of(
+            createTaskRequest("Task 1", UserRole.HR_ADMIN, 1, false, null),
+            createTaskRequest("Task 2", UserRole.HR_ADMIN, 1, false, null) // Duplicate, not parallel
+        ));
+
+        mockMvc.perform(put("/api/templates/{id}", created.getId())
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(updateRequest)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").value(containsString("sequence order 1")));
+    }
+
     // === HELPER METHODS ===
 
     private CreateTemplateRequest createValidTemplateRequest(String name) {
