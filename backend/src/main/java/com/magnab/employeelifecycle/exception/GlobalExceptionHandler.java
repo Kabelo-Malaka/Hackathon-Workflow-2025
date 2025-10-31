@@ -48,6 +48,20 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle UnauthorizedException - return 401 Unauthorized.
+     */
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ErrorResponse> handleUnauthorizedException(UnauthorizedException ex) {
+        ErrorResponse error = new ErrorResponse(
+            HttpStatus.UNAUTHORIZED.value(),
+            "Unauthorized",
+            ex.getMessage(),
+            LocalDateTime.now()
+        );
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error);
+    }
+
+    /**
      * Handle ValidationException - return 400 Bad Request.
      */
     @ExceptionHandler(ValidationException.class)

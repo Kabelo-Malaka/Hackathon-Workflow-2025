@@ -15,4 +15,6 @@ public interface WorkflowTemplateRepository extends JpaRepository<WorkflowTempla
     Optional<WorkflowTemplate> findByTemplateName(String templateName);
 
     List<WorkflowTemplate> findByWorkflowType(WorkflowType workflowType);
+
+    List<WorkflowTemplate> findByTemplateNameAndIsActive(String templateName, Boolean isActive);
 }
