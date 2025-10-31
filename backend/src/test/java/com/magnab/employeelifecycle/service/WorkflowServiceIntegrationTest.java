@@ -861,4 +861,420 @@ class WorkflowServiceIntegrationTest {
             assertThat(updatedWorkflow.getCustomFieldValues()).containsEntry("location", "Remote");
         }
     }
+
+    @Nested
+    @DisplayName("Story 3.4: Workflow State Management Integration Tests")
+    class WorkflowStateManagementIntegrationTests {
+
+        private User hrUser;
+        private User techUser;
+        private User managerUser;
+        private WorkflowInstance testWorkflowInstance;
+        private List<TaskInstance> testTasks;
+
+        @BeforeEach
+        void setupStateManagementData() {
+            // Create HR user
+            hrUser = new User();
+            hrUser.setUsername("hr_state_test");
+            hrUser.setEmail("hr.state@test.com");
+            hrUser.setPasswordHash("hashed");
+            hrUser.setRole(UserRole.HR_ADMIN);
+            hrUser.setIsActive(true);
+            hrUser = userRepository.save(hrUser);
+
+            // Create tech user
+            techUser = new User();
+            techUser.setUsername("tech_state_test");
+            techUser.setEmail("tech.state@test.com");
+            techUser.setPasswordHash("hashed");
+            techUser.setRole(UserRole.TECH_SUPPORT);
+            techUser.setIsActive(true);
+            techUser = userRepository.save(techUser);
+
+            // Create manager user
+            managerUser = new User();
+            managerUser.setUsername("manager_state_test");
+            managerUser.setEmail("manager.state@test.com");
+            managerUser.setPasswordHash("hashed");
+            managerUser.setRole(UserRole.LINE_MANAGER);
+            managerUser.setIsActive(true);
+            managerUser = userRepository.save(managerUser);
+
+            // Create workflow instance
+            EmployeeDetails employeeDetails = new EmployeeDetails();
+            employeeDetails.setEmployeeName("State Management Test Employee");
+            employeeDetails.setEmployeeEmail("state.test@example.com");
+            employeeDetails.setEmployeeRole("Engineer");
+
+            WorkflowCreationResult creationResult = workflowService.createWorkflowInstance(
+                    testTemplate.getId(), employeeDetails, null, testUser.getId());
+
+            testWorkflowInstance = workflowInstanceRepository.findById(creationResult.getWorkflowInstanceId())
+                    .orElseThrow();
+
+            // Get tasks for this workflow
+            testTasks = taskInstanceRepository.findByWorkflowInstanceId(testWorkflowInstance.getId());
+        }
+
+        @Test
+        @DisplayName("Should transition workflow from INITIATED to IN_PROGRESS and persist state history")
+        void shouldTransitionWorkflowToInProgress() {
+            // Arrange
+            assertThat(testWorkflowInstance.getStatus()).isEqualTo(WorkflowStatus.INITIATED);
+
+            // Act
+            var result = workflowService.updateWorkflowStatus(
+                    testWorkflowInstance.getId(),
+                    WorkflowStatus.IN_PROGRESS,
+                    testUser.getId(),
+                    "Starting workflow"
+            );
+
+            // Assert: Result contains correct summary
+            assertThat(result).isNotNull();
+            assertThat(result.getWorkflowInstanceId()).isEqualTo(testWorkflowInstance.getId());
+            assertThat(result.getStatus()).isEqualTo(WorkflowStatus.IN_PROGRESS);
+            assertThat(result.getTotalTasks()).isEqualTo(3);
+
+            // Verify database persistence
+            WorkflowInstance updated = workflowInstanceRepository.findById(testWorkflowInstance.getId())
+                    .orElseThrow();
+            assertThat(updated.getStatus()).isEqualTo(WorkflowStatus.IN_PROGRESS);
+
+            // Verify state history created
+            List<WorkflowStateHistory> history = workflowStateHistoryRepository
+                    .findByWorkflowInstanceIdOrderByChangedAtDesc(testWorkflowInstance.getId());
+            assertThat(history).hasSizeGreaterThanOrEqualTo(2); // Initial + new transition
+
+            WorkflowStateHistory latestHistory = history.get(0);
+            assertThat(latestHistory.getPreviousStatus()).isEqualTo(WorkflowStatus.INITIATED);
+            assertThat(latestHistory.getNewStatus()).isEqualTo(WorkflowStatus.IN_PROGRESS);
+            assertThat(latestHistory.getChangedBy()).isEqualTo(testUser.getId());
+            assertThat(latestHistory.getNotes()).isEqualTo("Starting workflow");
+        }
+
+        @Test
+        @DisplayName("Should transition workflow to COMPLETED and set completedAt timestamp")
+        void shouldTransitionWorkflowToCompleted() {
+            // Arrange: First transition to IN_PROGRESS
+            workflowService.updateWorkflowStatus(
+                    testWorkflowInstance.getId(),
+                    WorkflowStatus.IN_PROGRESS,
+                    testUser.getId(),
+                    "Starting"
+            );
+
+            LocalDateTime beforeCompletion = LocalDateTime.now();
+
+            // Act
+            var result = workflowService.updateWorkflowStatus(
+                    testWorkflowInstance.getId(),
+                    WorkflowStatus.COMPLETED,
+                    testUser.getId(),
+                    "All tasks done"
+            );
+
+            LocalDateTime afterCompletion = LocalDateTime.now();
+
+            // Assert
+            assertThat(result.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
+
+            // Verify completedAt timestamp set
+            WorkflowInstance completed = workflowInstanceRepository.findById(testWorkflowInstance.getId())
+                    .orElseThrow();
+            assertThat(completed.getCompletedAt()).isNotNull();
+            assertThat(completed.getCompletedAt()).isAfterOrEqualTo(beforeCompletion);
+            assertThat(completed.getCompletedAt()).isBefore(afterCompletion);
+        }
+
+        @Test
+        @DisplayName("Should reject invalid workflow state transitions")
+        void shouldRejectInvalidWorkflowTransitions() {
+            // Arrange: Workflow is INITIATED
+            assertThat(testWorkflowInstance.getStatus()).isEqualTo(WorkflowStatus.INITIATED);
+
+            // Act & Assert: Cannot transition INITIATED -> COMPLETED
+            assertThatThrownBy(() ->
+                    workflowService.updateWorkflowStatus(
+                            testWorkflowInstance.getId(),
+                            WorkflowStatus.COMPLETED,
+                            testUser.getId(),
+                            "Invalid transition"
+                    )
+            )
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Invalid workflow state transition");
+
+            // Verify status unchanged
+            WorkflowInstance unchanged = workflowInstanceRepository.findById(testWorkflowInstance.getId())
+                    .orElseThrow();
+            assertThat(unchanged.getStatus()).isEqualTo(WorkflowStatus.INITIATED);
+        }
+
+        @Test
+        @DisplayName("Should update task status and persist to database")
+        void shouldUpdateTaskStatus() {
+            // Arrange: Get first task and save original updatedAt
+            TaskInstance task = testTasks.get(0);
+            assertThat(task.getStatus()).isEqualTo(TaskStatus.NOT_STARTED);
+            LocalDateTime originalUpdatedAt = task.getUpdatedAt();
+
+            // Act
+            var result = workflowService.updateTaskStatus(
+                    task.getId(),
+                    TaskStatus.IN_PROGRESS,
+                    hrUser.getId()
+            );
+
+            // Assert: Result correct
+            assertThat(result).isNotNull();
+            assertThat(result.getTaskInstanceId()).isEqualTo(task.getId());
+            assertThat(result.getStatus()).isEqualTo(TaskStatus.IN_PROGRESS);
+
+            // Verify database persistence
+            TaskInstance updated = taskInstanceRepository.findById(task.getId()).orElseThrow();
+            assertThat(updated.getStatus()).isEqualTo(TaskStatus.IN_PROGRESS);
+            // updatedAt should be equal or after original (JPA might not update in integration test)
+            assertThat(updated.getUpdatedAt()).isAfterOrEqualTo(originalUpdatedAt);
+        }
+
+        @Test
+        @DisplayName("Should set completedAt and completedBy when task marked COMPLETED")
+        void shouldSetTaskCompletionFields() {
+            // Arrange: Transition task to IN_PROGRESS first
+            TaskInstance task = testTasks.get(0);
+            workflowService.updateTaskStatus(task.getId(), TaskStatus.IN_PROGRESS, hrUser.getId());
+
+            LocalDateTime beforeCompletion = LocalDateTime.now();
+
+            // Act
+            var result = workflowService.updateTaskStatus(
+                    task.getId(),
+                    TaskStatus.COMPLETED,
+                    hrUser.getId()
+            );
+
+            LocalDateTime afterCompletion = LocalDateTime.now();
+
+            // Assert
+            assertThat(result.getStatus()).isEqualTo(TaskStatus.COMPLETED);
+            assertThat(result.getCompletedAt()).isNotNull();
+            assertThat(result.getCompletedBy()).isEqualTo(hrUser.getId());
+
+            // Verify database
+            TaskInstance completed = taskInstanceRepository.findById(task.getId()).orElseThrow();
+            assertThat(completed.getCompletedAt()).isAfterOrEqualTo(beforeCompletion);
+            assertThat(completed.getCompletedAt()).isBefore(afterCompletion);
+            assertThat(completed.getCompletedBy()).isEqualTo(hrUser.getId());
+        }
+
+        @Test
+        @DisplayName("Should reject invalid task state transitions")
+        void shouldRejectInvalidTaskTransitions() {
+            // Arrange: Task is NOT_STARTED
+            TaskInstance task = testTasks.get(0);
+            assertThat(task.getStatus()).isEqualTo(TaskStatus.NOT_STARTED);
+
+            // Act & Assert: Cannot transition NOT_STARTED -> COMPLETED
+            assertThatThrownBy(() ->
+                    workflowService.updateTaskStatus(
+                            task.getId(),
+                            TaskStatus.COMPLETED,
+                            hrUser.getId()
+                    )
+            )
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Invalid task state transition");
+
+            // Verify status unchanged
+            TaskInstance unchanged = taskInstanceRepository.findById(task.getId()).orElseThrow();
+            assertThat(unchanged.getStatus()).isEqualTo(TaskStatus.NOT_STARTED);
+        }
+
+        @Test
+        @DisplayName("End-to-end: Complete all tasks and verify automatic workflow completion")
+        void endToEndAutomaticWorkflowCompletion() {
+            // Arrange: Assign all tasks first
+            workflowService.assignTasksForWorkflow(testWorkflowInstance.getId());
+
+            // Verify workflow is IN_PROGRESS after assignment
+            WorkflowInstance afterAssignment = workflowInstanceRepository
+                    .findById(testWorkflowInstance.getId()).orElseThrow();
+            assertThat(afterAssignment.getStatus()).isEqualTo(WorkflowStatus.IN_PROGRESS);
+
+            // Get assigned tasks
+            List<TaskInstance> assignedTasks = taskInstanceRepository
+                    .findByWorkflowInstanceId(testWorkflowInstance.getId());
+            assertThat(assignedTasks).hasSize(3);
+            assertThat(assignedTasks).allMatch(t -> t.getStatus() == TaskStatus.IN_PROGRESS);
+
+            // Act: Complete all tasks one by one
+            for (TaskInstance task : assignedTasks) {
+                workflowService.updateTaskStatus(
+                        task.getId(),
+                        TaskStatus.COMPLETED,
+                        task.getAssignedUserId()
+                );
+            }
+
+            // Assert: Workflow automatically transitioned to COMPLETED
+            WorkflowInstance completedWorkflow = workflowInstanceRepository
+                    .findById(testWorkflowInstance.getId()).orElseThrow();
+            assertThat(completedWorkflow.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
+            assertThat(completedWorkflow.getCompletedAt()).isNotNull();
+
+            // Verify all tasks completed
+            List<TaskInstance> completedTasks = taskInstanceRepository
+                    .findByWorkflowInstanceId(testWorkflowInstance.getId());
+            assertThat(completedTasks).allMatch(t -> t.getStatus() == TaskStatus.COMPLETED);
+            assertThat(completedTasks).allMatch(t -> t.getCompletedAt() != null);
+
+            // Verify state history shows automatic transition
+            List<WorkflowStateHistory> history = workflowStateHistoryRepository
+                    .findByWorkflowInstanceIdOrderByChangedAtDesc(testWorkflowInstance.getId());
+
+            WorkflowStateHistory completionHistory = history.stream()
+                    .filter(h -> h.getNewStatus() == WorkflowStatus.COMPLETED)
+                    .findFirst().orElseThrow();
+            assertThat(completionHistory.getPreviousStatus()).isEqualTo(WorkflowStatus.IN_PROGRESS);
+            assertThat(completionHistory.getNotes()).contains("All visible tasks completed");
+        }
+
+        @Test
+        @DisplayName("Should not auto-complete workflow if some visible tasks are incomplete")
+        void shouldNotAutoCompleteWithIncompleteTasks() {
+            // Arrange: Assign all tasks
+            workflowService.assignTasksForWorkflow(testWorkflowInstance.getId());
+
+            List<TaskInstance> assignedTasks = taskInstanceRepository
+                    .findByWorkflowInstanceId(testWorkflowInstance.getId());
+
+            // Act: Complete only 2 out of 3 tasks
+            workflowService.updateTaskStatus(
+                    assignedTasks.get(0).getId(),
+                    TaskStatus.COMPLETED,
+                    assignedTasks.get(0).getAssignedUserId()
+            );
+            workflowService.updateTaskStatus(
+                    assignedTasks.get(1).getId(),
+                    TaskStatus.COMPLETED,
+                    assignedTasks.get(1).getAssignedUserId()
+            );
+
+            // Assert: Workflow still IN_PROGRESS
+            WorkflowInstance workflow = workflowInstanceRepository
+                    .findById(testWorkflowInstance.getId()).orElseThrow();
+            assertThat(workflow.getStatus()).isEqualTo(WorkflowStatus.IN_PROGRESS);
+            assertThat(workflow.getCompletedAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("Should trigger dependent task assignment when task completes")
+        void shouldTriggerDependentTaskAssignment() {
+            // Arrange: Create template with dependencies
+            WorkflowTemplate depTemplate = new WorkflowTemplate();
+            depTemplate.setTemplateName("Dependency Flow Template");
+            depTemplate.setWorkflowType(com.magnab.employeelifecycle.enums.WorkflowType.ONBOARDING);
+            depTemplate.setIsActive(true);
+            depTemplate.setCreatedBy(testUser.getId());
+            depTemplate = workflowTemplateRepository.save(depTemplate);
+
+            // Task 1: No dependency
+            TemplateTask task1 = new TemplateTask();
+            task1.setTemplate(depTemplate);
+            task1.setTaskName("First Task");
+            task1.setAssignedRole(UserRole.HR_ADMIN);
+            task1.setSequenceOrder(1);
+            task1.setCreatedBy(testUser.getId());
+            task1 = templateTaskRepository.save(task1);
+
+            // Task 2: Depends on task1
+            TemplateTask task2 = new TemplateTask();
+            task2.setTemplate(depTemplate);
+            task2.setTaskName("Second Task");
+            task2.setAssignedRole(UserRole.TECH_SUPPORT);
+            task2.setSequenceOrder(2);
+            task2.setDependsOnTask(task1);
+            task2.setCreatedBy(testUser.getId());
+            task2 = templateTaskRepository.save(task2);
+
+            // Create workflow
+            EmployeeDetails employeeDetails = new EmployeeDetails();
+            employeeDetails.setEmployeeName("Dependency Test");
+            employeeDetails.setEmployeeEmail("dep@test.com");
+            employeeDetails.setEmployeeRole("Engineer");
+
+            WorkflowCreationResult workflowResult = workflowService.createWorkflowInstance(
+                    depTemplate.getId(), employeeDetails, null, testUser.getId());
+
+            // Assign initial tasks (only task1 should be assigned)
+            workflowService.assignTasksForWorkflow(workflowResult.getWorkflowInstanceId());
+
+            List<TaskInstance> tasksAfterFirstAssignment = taskInstanceRepository
+                    .findByWorkflowInstanceId(workflowResult.getWorkflowInstanceId());
+
+            TaskInstance task1Instance = tasksAfterFirstAssignment.stream()
+                    .filter(t -> t.getTaskName().equals("First Task"))
+                    .findFirst().orElseThrow();
+            TaskInstance task2Instance = tasksAfterFirstAssignment.stream()
+                    .filter(t -> t.getTaskName().equals("Second Task"))
+                    .findFirst().orElseThrow();
+
+            assertThat(task1Instance.getStatus()).isEqualTo(TaskStatus.IN_PROGRESS);
+            assertThat(task2Instance.getStatus()).isEqualTo(TaskStatus.NOT_STARTED);
+
+            // Act: Complete task1 (should trigger assignment of task2)
+            workflowService.updateTaskStatus(
+                    task1Instance.getId(),
+                    TaskStatus.COMPLETED,
+                    task1Instance.getAssignedUserId()
+            );
+
+            // Assert: Task2 should now be assigned automatically
+            TaskInstance task2AfterCompletion = taskInstanceRepository
+                    .findById(task2Instance.getId()).orElseThrow();
+            assertThat(task2AfterCompletion.getStatus()).isEqualTo(TaskStatus.IN_PROGRESS);
+            assertThat(task2AfterCompletion.getAssignedUserId()).isNotNull();
+        }
+
+        @Test
+        @DisplayName("Should calculate correct task counts in workflow state summary")
+        void shouldCalculateCorrectTaskCounts() {
+            // Arrange: Assign tasks and complete some
+            workflowService.assignTasksForWorkflow(testWorkflowInstance.getId());
+
+            List<TaskInstance> tasks = taskInstanceRepository
+                    .findByWorkflowInstanceId(testWorkflowInstance.getId());
+
+            // Complete first task
+            workflowService.updateTaskStatus(
+                    tasks.get(0).getId(),
+                    TaskStatus.COMPLETED,
+                    tasks.get(0).getAssignedUserId()
+            );
+
+            // Block second task
+            workflowService.updateTaskStatus(
+                    tasks.get(1).getId(),
+                    TaskStatus.BLOCKED,
+                    tasks.get(1).getAssignedUserId()
+            );
+
+            // Act: Update workflow status to get summary
+            var summary = workflowService.updateWorkflowStatus(
+                    testWorkflowInstance.getId(),
+                    WorkflowStatus.BLOCKED,
+                    testUser.getId(),
+                    "Some tasks blocked"
+            );
+
+            // Assert: Task counts are correct
+            assertThat(summary.getTotalTasks()).isEqualTo(3);
+            assertThat(summary.getTasksCompleted()).isEqualTo(1);
+            assertThat(summary.getTasksBlocked()).isEqualTo(1);
+            assertThat(summary.getTasksInProgress()).isEqualTo(1);
+            assertThat(summary.getTasksNotStarted()).isEqualTo(0);
+        }
+    }
 }

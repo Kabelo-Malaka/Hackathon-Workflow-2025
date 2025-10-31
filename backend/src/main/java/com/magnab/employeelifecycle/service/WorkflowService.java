@@ -2,7 +2,9 @@ package com.magnab.employeelifecycle.service;
 
 import com.magnab.employeelifecycle.dto.request.EmployeeDetails;
 import com.magnab.employeelifecycle.dto.response.TaskAssignmentResult;
+import com.magnab.employeelifecycle.dto.response.TaskStatusUpdate;
 import com.magnab.employeelifecycle.dto.response.WorkflowCreationResult;
+import com.magnab.employeelifecycle.dto.response.WorkflowStateSummary;
 import com.magnab.employeelifecycle.entity.*;
 import com.magnab.employeelifecycle.enums.TaskStatus;
 import com.magnab.employeelifecycle.enums.UserRole;
@@ -438,5 +440,236 @@ public class WorkflowService {
 
         log.info("Updated workflow {} status from {} to IN_PROGRESS",
                 workflowInstance.getId(), previousStatus);
+    }
+
+    /**
+     * Updates workflow status with validation and state history recording.
+     * Validates state transitions and creates audit trail in workflow_state_history.
+     *
+     * @param workflowInstanceId The ID of the workflow to update
+     * @param newStatus The new status to transition to
+     * @param userId The user making the status change
+     * @param notes Optional notes explaining the status change
+     * @return WorkflowStateSummary with updated workflow state and task counts
+     * @throws ResourceNotFoundException if workflow not found
+     * @throws ValidationException if state transition is invalid
+     */
+    @Transactional
+    public WorkflowStateSummary updateWorkflowStatus(
+            UUID workflowInstanceId,
+            WorkflowStatus newStatus,
+            UUID userId,
+            String notes
+    ) {
+        log.info("Updating workflow {} status to {}", workflowInstanceId, newStatus);
+
+        // Validate workflow exists
+        WorkflowInstance workflowInstance = workflowInstanceRepository.findById(workflowInstanceId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Workflow with ID " + workflowInstanceId + " not found"));
+
+        WorkflowStatus currentStatus = workflowInstance.getStatus();
+
+        // Validate state transition
+        if (!isValidWorkflowTransition(currentStatus, newStatus)) {
+            throw new ValidationException(
+                    "Invalid workflow state transition from " + currentStatus + " to " + newStatus);
+        }
+
+        // Update workflow status
+        workflowInstance.setStatus(newStatus);
+        if (newStatus == WorkflowStatus.COMPLETED) {
+            workflowInstance.setCompletedAt(LocalDateTime.now());
+        }
+        workflowInstanceRepository.save(workflowInstance);
+
+        // Create state history record
+        WorkflowStateHistory history = new WorkflowStateHistory();
+        history.setWorkflowInstanceId(workflowInstanceId);
+        history.setPreviousStatus(currentStatus);
+        history.setNewStatus(newStatus);
+        history.setChangedBy(userId);
+        history.setChangedAt(LocalDateTime.now());
+        history.setNotes(notes != null ? notes : "Status updated");
+        workflowStateHistoryRepository.save(history);
+
+        log.info("Workflow {} status updated from {} to {}", workflowInstanceId, currentStatus, newStatus);
+
+        // Return workflow state summary
+        return getWorkflowStateSummary(workflowInstanceId);
+    }
+
+    /**
+     * Validates if a workflow state transition is allowed.
+     * Enforces business rules: INITIATED→IN_PROGRESS, IN_PROGRESS→COMPLETED/BLOCKED, BLOCKED→IN_PROGRESS.
+     * COMPLETED is a terminal state, INITIATED cannot be returned to.
+     */
+    private boolean isValidWorkflowTransition(WorkflowStatus current, WorkflowStatus next) {
+        if (current == WorkflowStatus.COMPLETED) return false; // Terminal state
+        if (next == WorkflowStatus.INITIATED) return false; // Can't return to INITIATED
+
+        return switch (current) {
+            case INITIATED -> next == WorkflowStatus.IN_PROGRESS;
+            case IN_PROGRESS -> next == WorkflowStatus.COMPLETED || next == WorkflowStatus.BLOCKED;
+            case BLOCKED -> next == WorkflowStatus.IN_PROGRESS;
+            default -> false;
+        };
+    }
+
+    /**
+     * Transitions workflow to IN_PROGRESS if currently INITIATED.
+     * Called when first task is assigned. Idempotent - does nothing if already IN_PROGRESS.
+     */
+    private void transitionToInProgressIfNeeded(UUID workflowInstanceId, UUID userId) {
+        WorkflowInstance workflowInstance = workflowInstanceRepository.findById(workflowInstanceId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Workflow with ID " + workflowInstanceId + " not found"));
+
+        if (workflowInstance.getStatus() == WorkflowStatus.INITIATED) {
+            updateWorkflowStatus(workflowInstanceId, WorkflowStatus.IN_PROGRESS, userId,
+                    "First task assigned");
+        }
+    }
+
+    /**
+     * Transitions workflow to COMPLETED if all visible tasks are COMPLETED.
+     * Called when any task is marked complete. Idempotent - does nothing if not all tasks done.
+     */
+    private void transitionToCompletedIfAllTasksDone(UUID workflowInstanceId, UUID userId) {
+        // Get all visible tasks for the workflow
+        List<TaskInstance> visibleTasks = taskInstanceRepository
+                .findByWorkflowInstanceIdAndIsVisible(workflowInstanceId, true);
+
+        // Check if all visible tasks are COMPLETED
+        boolean allTasksCompleted = !visibleTasks.isEmpty() &&
+                visibleTasks.stream().allMatch(task -> task.getStatus() == TaskStatus.COMPLETED);
+
+        if (allTasksCompleted) {
+            WorkflowInstance workflowInstance = workflowInstanceRepository.findById(workflowInstanceId)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Workflow with ID " + workflowInstanceId + " not found"));
+
+            // Only transition if currently IN_PROGRESS
+            if (workflowInstance.getStatus() == WorkflowStatus.IN_PROGRESS) {
+                updateWorkflowStatus(workflowInstanceId, WorkflowStatus.COMPLETED, userId,
+                        "All visible tasks completed");
+            }
+        }
+    }
+
+    /**
+     * Calculates workflow state summary with task counts by status.
+     * Used to provide current workflow state after status updates.
+     * Optimized to use database-level counting instead of loading all tasks into memory.
+     */
+    private WorkflowStateSummary getWorkflowStateSummary(UUID workflowInstanceId) {
+        WorkflowInstance workflowInstance = workflowInstanceRepository.findById(workflowInstanceId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Workflow with ID " + workflowInstanceId + " not found"));
+
+        WorkflowStateSummary summary = new WorkflowStateSummary();
+        summary.setWorkflowInstanceId(workflowInstanceId);
+        summary.setStatus(workflowInstance.getStatus());
+
+        // Use repository count methods for efficient database-level aggregation
+        // instead of loading all tasks into memory
+        Long completed = taskInstanceRepository.countByWorkflowInstanceIdAndStatus(
+                workflowInstanceId, TaskStatus.COMPLETED);
+        Long inProgress = taskInstanceRepository.countByWorkflowInstanceIdAndStatus(
+                workflowInstanceId, TaskStatus.IN_PROGRESS);
+        Long blocked = taskInstanceRepository.countByWorkflowInstanceIdAndStatus(
+                workflowInstanceId, TaskStatus.BLOCKED);
+        Long notStarted = taskInstanceRepository.countByWorkflowInstanceIdAndStatus(
+                workflowInstanceId, TaskStatus.NOT_STARTED);
+
+        summary.setTasksCompleted(completed.intValue());
+        summary.setTasksInProgress(inProgress.intValue());
+        summary.setTasksBlocked(blocked.intValue());
+        summary.setTasksNotStarted(notStarted.intValue());
+        summary.setTotalTasks(completed.intValue() + inProgress.intValue() +
+                blocked.intValue() + notStarted.intValue());
+
+        return summary;
+    }
+
+    /**
+     * Updates task status with validation and triggers dependent task assignment.
+     * Validates state transitions and sets completedAt/completedBy when task is marked COMPLETED.
+     * Automatically triggers assignment of dependent tasks and checks for workflow completion.
+     *
+     * @param taskInstanceId The ID of the task to update
+     * @param newStatus The new status to transition to
+     * @param userId The user making the status change
+     * @return TaskStatusUpdate with updated task details
+     * @throws ResourceNotFoundException if task not found
+     * @throws ValidationException if state transition is invalid
+     */
+    @Transactional
+    public TaskStatusUpdate updateTaskStatus(
+            UUID taskInstanceId,
+            TaskStatus newStatus,
+            UUID userId
+    ) {
+        log.info("Updating task {} status to {}", taskInstanceId, newStatus);
+
+        // Validate task exists
+        TaskInstance taskInstance = taskInstanceRepository.findById(taskInstanceId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Task with ID " + taskInstanceId + " not found"));
+
+        TaskStatus currentStatus = taskInstance.getStatus();
+
+        // Validate state transition
+        if (!isValidTaskTransition(currentStatus, newStatus)) {
+            throw new ValidationException(
+                    "Invalid task state transition from " + currentStatus + " to " + newStatus);
+        }
+
+        // Update task status
+        taskInstance.setStatus(newStatus);
+        if (newStatus == TaskStatus.COMPLETED) {
+            taskInstance.setCompletedAt(LocalDateTime.now());
+            taskInstance.setCompletedBy(userId);
+        }
+        taskInstanceRepository.save(taskInstance);
+
+        log.info("Task {} status updated from {} to {}", taskInstanceId, currentStatus, newStatus);
+
+        // If task is completed, trigger dependent task assignment and check workflow completion
+        if (newStatus == TaskStatus.COMPLETED) {
+            UUID workflowInstanceId = taskInstance.getWorkflowInstanceId();
+
+            // Assign any newly-ready dependent tasks
+            assignTasksForWorkflow(workflowInstanceId);
+
+            // Check if workflow should be marked complete
+            transitionToCompletedIfAllTasksDone(workflowInstanceId, userId);
+        }
+
+        // Build and return result DTO
+        TaskStatusUpdate result = new TaskStatusUpdate();
+        result.setTaskInstanceId(taskInstance.getId());
+        result.setTaskName(taskInstance.getTaskName());
+        result.setStatus(taskInstance.getStatus());
+        result.setCompletedAt(taskInstance.getCompletedAt());
+        result.setCompletedBy(taskInstance.getCompletedBy());
+
+        return result;
+    }
+
+    /**
+     * Validates if a task state transition is allowed.
+     * Enforces business rules: NOT_STARTED→IN_PROGRESS, IN_PROGRESS→COMPLETED/BLOCKED, BLOCKED→IN_PROGRESS.
+     * COMPLETED is a terminal state.
+     */
+    private boolean isValidTaskTransition(TaskStatus current, TaskStatus next) {
+        if (current == TaskStatus.COMPLETED) return false; // Terminal state
+
+        return switch (current) {
+            case NOT_STARTED -> next == TaskStatus.IN_PROGRESS;
+            case IN_PROGRESS -> next == TaskStatus.COMPLETED || next == TaskStatus.BLOCKED;
+            case BLOCKED -> next == TaskStatus.IN_PROGRESS;
+            default -> false;
+        };
     }
 }

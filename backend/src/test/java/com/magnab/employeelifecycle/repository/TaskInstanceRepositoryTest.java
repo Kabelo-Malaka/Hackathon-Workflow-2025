@@ -76,6 +76,7 @@ class TaskInstanceRepositoryTest {
         taskInstance.setAssignedRole(UserRole.HR_ADMIN);
         taskInstance.setStatus(TaskStatus.NOT_STARTED);
         taskInstance.setIsVisible(true);
+        taskInstance.setSequenceOrder(1);
 
         // Act
         TaskInstance saved = taskInstanceRepository.save(taskInstance);
@@ -124,6 +125,7 @@ class TaskInstanceRepositoryTest {
         taskInstance.setAssignedRole(UserRole.TECH_SUPPORT);
         taskInstance.setStatus(TaskStatus.IN_PROGRESS);
         taskInstance.setChecklistData(checklistData);
+        taskInstance.setSequenceOrder(1);
 
         // Act
         TaskInstance saved = taskInstanceRepository.save(taskInstance);
@@ -278,6 +280,7 @@ class TaskInstanceRepositoryTest {
         taskInstance.setAssignedUserId(null); // No user assigned
         taskInstance.setAssignedRole(UserRole.HR_ADMIN);
         taskInstance.setStatus(TaskStatus.NOT_STARTED);
+        taskInstance.setSequenceOrder(1);
 
         // Act
         TaskInstance saved = taskInstanceRepository.save(taskInstance);
@@ -302,6 +305,7 @@ class TaskInstanceRepositoryTest {
         taskInstance.setAssignedUserId(adminUserId);
         taskInstance.setAssignedRole(UserRole.HR_ADMIN);
         taskInstance.setStatus(TaskStatus.NOT_STARTED);
+        taskInstance.setSequenceOrder(1);
 
         // Act & Assert
         assertThrows(Exception.class, () -> {
@@ -325,6 +329,7 @@ class TaskInstanceRepositoryTest {
         taskInstance.setTemplateTaskId(templateTaskId);
         taskInstance.setTaskName("Default Values Task");
         taskInstance.setAssignedRole(UserRole.HR_ADMIN);
+        taskInstance.setSequenceOrder(1);
         // status and isVisible not explicitly set
 
         // Act
@@ -360,6 +365,7 @@ class TaskInstanceRepositoryTest {
         taskInstance.setAssignedRole(UserRole.HR_ADMIN);
         taskInstance.setStatus(TaskStatus.NOT_STARTED);
         taskInstance.setIsVisible(true);
+        taskInstance.setSequenceOrder(1);
         return taskInstance;
     }
 }

@@ -63,4 +63,11 @@ public interface TaskInstanceRepository extends JpaRepository<TaskInstance, UUID
      * Used for dependency checking during task assignment - ensures tasks are processed in correct order.
      */
     List<TaskInstance> findByWorkflowInstanceIdOrderBySequenceOrder(UUID workflowInstanceId);
+
+    /**
+     * Count tasks in a workflow with a specific status.
+     * Used for workflow state summary - calculates task counts by status.
+     * Leverages composite index (workflow_instance_id, status) for efficient counting.
+     */
+    Long countByWorkflowInstanceIdAndStatus(UUID workflowInstanceId, TaskStatus status);
 }
