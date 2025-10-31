@@ -33,6 +33,9 @@ public class TemplateTask {
     @GenericGenerator(name = "UUID", strategy = "org.hibernate.id.UUIDGenerator")
     private UUID id;
 
+    @Column(name = "template_id", nullable = false, insertable = false, updatable = false)
+    private UUID templateId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "template_id", nullable = false)
     private WorkflowTemplate template;
