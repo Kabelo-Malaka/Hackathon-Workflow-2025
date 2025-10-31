@@ -7,7 +7,9 @@ import { DashboardPage } from './components/dashboard/DashboardPage';
 import { UserManagementPage } from './components/users/UserManagementPage';
 import { TemplateLibraryPage } from './components/templates/TemplateLibraryPage';
 import { TemplateBuilderPage } from './components/templates/TemplateBuilderPage';
+import { InitiateWorkflowPage } from './features/workflows/InitiateWorkflowPage';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
+import { RoleBasedRoute } from './components/common/RoleBasedRoute';
 import { AppLayout } from './components/common/AppLayout';
 import { useCheckSessionQuery } from './features/auth/authApi';
 import { setUser, clearUser, setLoading } from './features/auth/authSlice';
@@ -94,6 +96,16 @@ function App() {
                 <TemplateBuilderPage />
               </AppLayout>
             </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/workflows/initiate"
+          element={
+            <RoleBasedRoute allowedRoles={['HR_ADMIN']}>
+              <AppLayout>
+                <InitiateWorkflowPage />
+              </AppLayout>
+            </RoleBasedRoute>
           }
         />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
