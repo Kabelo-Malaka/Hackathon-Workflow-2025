@@ -30,12 +30,12 @@ export const DashboardPage = () => {
   ];
 
   return (
-    <Box p={3}>
+    <Box>
       <Typography variant="h4" gutterBottom>
         Dashboard
       </Typography>
       <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-        Welcome to the Employee Lifecycle Management Dashboard
+        Welcome to the Hello Goodbye Dashboard
       </Typography>
 
       <Grid container spacing={3}>

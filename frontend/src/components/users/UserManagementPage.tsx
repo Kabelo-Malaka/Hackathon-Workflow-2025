@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import {
-  Container,
   Paper,
   Typography,
   Button,
@@ -89,7 +88,7 @@ export const UserManagementPage = () => {
   // Show unauthorized message if not HR_ADMIN or ADMINISTRATOR
   if (user && user.role !== 'HR_ADMIN' && user.role !== 'ADMINISTRATOR') {
     return (
-      <Container maxWidth="lg" sx={{ mt: 4 }}>
+      <Box sx={{ mt: 4 }}>
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           <Typography variant="h5" color="error">
             Access Denied
@@ -98,12 +97,12 @@ export const UserManagementPage = () => {
             This page is only accessible to HR Administrators and Administrators.
           </Typography>
         </Paper>
-      </Container>
+      </Box>
     );
   }
 
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+    <Box sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h4" component="h1">
           User Management
@@ -211,6 +210,6 @@ export const UserManagementPage = () => {
           {snackbar.message}
         </Alert>
       </Snackbar>
-    </Container>
+    </Box>
   );
 };

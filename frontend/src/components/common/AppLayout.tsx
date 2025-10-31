@@ -39,7 +39,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       <AppBar position="static">
         <Toolbar>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Employee Lifecycle Management
+            Hello Goodbye
           </Typography>
           {user && (
             <Typography variant="body2" sx={{ mr: 2 }}>
@@ -51,7 +51,18 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           </Button>
         </Toolbar>
       </AppBar>
-      <Box>{children}</Box>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'center',
+          minHeight: 'calc(100vh - 64px)',
+          py: 3,
+        }}
+      >
+        <Box sx={{ width: '100%', maxWidth: '1200px', px: 2 }}>
+          {children}
+        </Box>
+      </Box>
     </Box>
   );
 };

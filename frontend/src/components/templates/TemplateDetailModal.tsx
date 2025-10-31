@@ -99,7 +99,7 @@ export const TemplateDetailModal: React.FC<TemplateDetailModalProps> = ({
             ) : (
               <List>
                 {template.tasks
-                  .sort((a, b) => a.sequenceOrder - b.sequenceOrder)
+                  .sort((a, b) => (a.sequenceOrder || 0) - (b.sequenceOrder || 0))
                   .map((task) => (
                     <ListItem
                       key={task.id}

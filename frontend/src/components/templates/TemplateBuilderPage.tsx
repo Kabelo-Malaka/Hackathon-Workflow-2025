@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useForm, Controller, useFieldArray } from 'react-hook-form';
 import {
-  Container,
   Box,
   Typography,
   Paper,
@@ -86,24 +85,20 @@ export const TemplateBuilderPage: React.FC = () => {
   // Redirect if no permission
   if (!hasPermission) {
     return (
-      <Container maxWidth="md">
-        <Box sx={{ mt: 4 }}>
-          <Alert severity="error">
-            Access denied: You do not have permission to access the template builder.
-          </Alert>
-        </Box>
-      </Container>
+      <Box sx={{ mt: 4 }}>
+        <Alert severity="error">
+          Access denied: You do not have permission to access the template builder.
+        </Alert>
+      </Box>
     );
   }
 
   // Loading state for edit mode
   if (isEditMode && isLoadingTemplate) {
     return (
-      <Container maxWidth="md">
-        <Box sx={{ mt: 4, textAlign: 'center' }}>
-          <Typography>Loading template...</Typography>
-        </Box>
-      </Container>
+      <Box sx={{ mt: 4, textAlign: 'center' }}>
+        <Typography>Loading template...</Typography>
+      </Box>
     );
   }
 
@@ -211,8 +206,7 @@ export const TemplateBuilderPage: React.FC = () => {
   };
 
   return (
-    <Container maxWidth="md">
-      <Box sx={{ mt: 4, mb: 4 }}>
+    <Box sx={{ mt: 4, mb: 4, maxWidth: '800px', mx: 'auto' }}>
         <Typography variant="h4" gutterBottom>
           {isEditMode ? 'Edit Workflow Template' : 'Create Workflow Template'}
         </Typography>
@@ -376,7 +370,6 @@ export const TemplateBuilderPage: React.FC = () => {
             {snackbar.message}
           </Alert>
         </Snackbar>
-      </Box>
-    </Container>
+    </Box>
   );
 };

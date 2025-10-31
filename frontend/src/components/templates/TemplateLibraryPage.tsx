@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Container,
   Box,
   Typography,
   Button,
@@ -79,42 +78,38 @@ export const TemplateLibraryPage: React.FC = () => {
   // Error state
   if (error) {
     return (
-      <Container maxWidth="lg">
-        <Box sx={{ mt: 4 }}>
-          <Alert severity="error">
-            Failed to load templates. Please try again later.
-          </Alert>
-        </Box>
-      </Container>
+      <Box sx={{ mt: 4 }}>
+        <Alert severity="error">
+          Failed to load templates. Please try again later.
+        </Alert>
+      </Box>
     );
   }
 
   // Empty state
   if (!templates || templates.length === 0) {
     return (
-      <Container maxWidth="lg">
-        <Box sx={{ textAlign: 'center', mt: 8 }}>
-          <Typography variant="h6" gutterBottom>
-            No templates yet
-          </Typography>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            Get started by creating your first workflow template
-          </Typography>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={handleCreateNew}
-            sx={{ mt: 2 }}
-          >
-            Create First Template
-          </Button>
-        </Box>
-      </Container>
+      <Box sx={{ textAlign: 'center', mt: 8 }}>
+        <Typography variant="h6" gutterBottom>
+          No templates yet
+        </Typography>
+        <Typography variant="body2" color="text.secondary" gutterBottom>
+          Get started by creating your first workflow template
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={handleCreateNew}
+          sx={{ mt: 2 }}
+        >
+          Create First Template
+        </Button>
+      </Box>
     );
   }
 
   return (
-    <Container maxWidth="lg">
+    <>
       <Box sx={{ mt: 4, mb: 4 }}>
         {/* Header */}
         <Typography variant="h4" gutterBottom>
@@ -217,6 +212,6 @@ export const TemplateLibraryPage: React.FC = () => {
           onClose={handleCloseDetailModal}
         />
       )}
-    </Container>
+    </>
   );
 };

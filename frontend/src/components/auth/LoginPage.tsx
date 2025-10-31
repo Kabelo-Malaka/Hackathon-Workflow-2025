@@ -62,7 +62,7 @@ export const LoginPage = () => {
       >
         <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
           <Typography variant="h4" component="h1" gutterBottom align="center">
-            Employee Lifecycle Management
+            Hello Goodbye
           </Typography>
           <Typography variant="h6" gutterBottom align="center" color="text.secondary">
             Login
