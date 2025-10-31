@@ -310,3 +310,171 @@ databaseChangeLog:
               ALTER TABLE template_tasks DROP COLUMN IF EXISTS is_parallel;
               ALTER TABLE template_tasks DROP COLUMN IF EXISTS assigned_role;
               ALTER TABLE workflow_templates DROP COLUMN IF EXISTS is_active;
+
+  # Story 3.1: Workflow Instance Data Model
+
+  # Changeset 010: Create task_status ENUM type
+  - changeSet:
+      id: 3-1-1-create-task-status-enum
+      author: james-developer
+      comment: "Create PostgreSQL ENUM type for task instance status (NOT_STARTED, IN_PROGRESS, BLOCKED, COMPLETED)"
+      changes:
+        - sql:
+            sql: |
+              CREATE TYPE task_status AS ENUM (
+                'NOT_STARTED',
+                'IN_PROGRESS',
+                'BLOCKED',
+                'COMPLETED'
+              );
+      rollback:
+        - sql:
+            sql: DROP TYPE IF EXISTS task_status CASCADE;
+
+  # Changeset 011: Create workflow_instances table
+  - changeSet:
+      id: 3-1-2-create-workflow-instances-table
+      author: james-developer
+      comment: "Create workflow_instances table for tracking employee onboarding/offboarding workflows"
+      changes:
+        - sql:
+            sql: |
+              CREATE TABLE workflow_instances (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                template_id UUID NOT NULL,
+                employee_name VARCHAR(255) NOT NULL,
+                employee_email VARCHAR(255) NOT NULL,
+                employee_role VARCHAR(100) NOT NULL,
+                workflow_type workflow_type NOT NULL,
+                status workflow_status NOT NULL DEFAULT 'INITIATED',
+                initiated_by UUID NOT NULL,
+                initiated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                completed_at TIMESTAMP NULL,
+                custom_field_values JSONB NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                CONSTRAINT fk_workflow_instances_template_id FOREIGN KEY (template_id) REFERENCES workflow_templates(id),
+                CONSTRAINT fk_workflow_instances_initiated_by FOREIGN KEY (initiated_by) REFERENCES users(id)
+              );
+      rollback:
+        - sql:
+            sql: DROP TABLE IF EXISTS workflow_instances;
+
+  # Changeset 012: Create indexes on workflow_instances table
+  - changeSet:
+      id: 3-1-3-create-workflow-instances-indexes
+      author: james-developer
+      comment: "Create indexes on workflow_instances for query optimization"
+      changes:
+        - sql:
+            sql: |
+              CREATE INDEX idx_workflow_instances_template_id ON workflow_instances(template_id);
+              CREATE INDEX idx_workflow_instances_employee_email ON workflow_instances(employee_email);
+              CREATE INDEX idx_workflow_instances_status ON workflow_instances(status);
+              CREATE INDEX idx_workflow_instances_initiated_at ON workflow_instances(initiated_at);
+              CREATE INDEX idx_workflow_instances_status_initiated_at ON workflow_instances(status, initiated_at);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_workflow_instances_status_initiated_at;
+              DROP INDEX IF EXISTS idx_workflow_instances_initiated_at;
+              DROP INDEX IF EXISTS idx_workflow_instances_status;
+              DROP INDEX IF EXISTS idx_workflow_instances_employee_email;
+              DROP INDEX IF EXISTS idx_workflow_instances_template_id;
+
+  # Changeset 013: Create task_instances table
+  - changeSet:
+      id: 3-1-4-create-task-instances-table
+      author: james-developer
+      comment: "Create task_instances table for tracking individual tasks within workflows"
+      changes:
+        - sql:
+            sql: |
+              CREATE TABLE task_instances (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                workflow_instance_id UUID NOT NULL,
+                template_task_id UUID NOT NULL,
+                task_name VARCHAR(255) NOT NULL,
+                assigned_user_id UUID NULL,
+                assigned_role user_role NOT NULL,
+                status task_status NOT NULL DEFAULT 'NOT_STARTED',
+                is_visible BOOLEAN NOT NULL DEFAULT TRUE,
+                due_date TIMESTAMP NULL,
+                completed_at TIMESTAMP NULL,
+                completed_by UUID NULL,
+                checklist_data JSONB NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                CONSTRAINT fk_task_instances_workflow_instance_id FOREIGN KEY (workflow_instance_id) REFERENCES workflow_instances(id) ON DELETE CASCADE,
+                CONSTRAINT fk_task_instances_template_task_id FOREIGN KEY (template_task_id) REFERENCES template_tasks(id),
+                CONSTRAINT fk_task_instances_assigned_user_id FOREIGN KEY (assigned_user_id) REFERENCES users(id) ON DELETE SET NULL,
+                CONSTRAINT fk_task_instances_completed_by FOREIGN KEY (completed_by) REFERENCES users(id) ON DELETE SET NULL
+              );
+      rollback:
+        - sql:
+            sql: DROP TABLE IF EXISTS task_instances;
+
+  # Changeset 014: Create indexes on task_instances table
+  - changeSet:
+      id: 3-1-5-create-task-instances-indexes
+      author: james-developer
+      comment: "Create indexes on task_instances for query optimization"
+      changes:
+        - sql:
+            sql: |
+              CREATE INDEX idx_task_instances_workflow_instance_id ON task_instances(workflow_instance_id);
+              CREATE INDEX idx_task_instances_assigned_user_id ON task_instances(assigned_user_id);
+              CREATE INDEX idx_task_instances_status ON task_instances(status);
+              CREATE INDEX idx_task_instances_due_date ON task_instances(due_date);
+              CREATE INDEX idx_task_instances_assigned_user_status ON task_instances(assigned_user_id, status);
+              CREATE INDEX idx_task_instances_workflow_status ON task_instances(workflow_instance_id, status);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_task_instances_workflow_status;
+              DROP INDEX IF EXISTS idx_task_instances_assigned_user_status;
+              DROP INDEX IF EXISTS idx_task_instances_due_date;
+              DROP INDEX IF EXISTS idx_task_instances_status;
+              DROP INDEX IF EXISTS idx_task_instances_assigned_user_id;
+              DROP INDEX IF EXISTS idx_task_instances_workflow_instance_id;
+
+  # Changeset 015: Create workflow_state_history table
+  - changeSet:
+      id: 3-1-6-create-workflow-state-history-table
+      author: james-developer
+      comment: "Create workflow_state_history table for audit trail of workflow status changes"
+      changes:
+        - sql:
+            sql: |
+              CREATE TABLE workflow_state_history (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                workflow_instance_id UUID NOT NULL,
+                previous_status workflow_status NOT NULL,
+                new_status workflow_status NOT NULL,
+                changed_by UUID NOT NULL,
+                changed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                notes TEXT NULL,
+                CONSTRAINT fk_workflow_state_history_workflow_instance_id FOREIGN KEY (workflow_instance_id) REFERENCES workflow_instances(id) ON DELETE CASCADE,
+                CONSTRAINT fk_workflow_state_history_changed_by FOREIGN KEY (changed_by) REFERENCES users(id)
+              );
+      rollback:
+        - sql:
+            sql: DROP TABLE IF EXISTS workflow_state_history;
+
+  # Changeset 016: Create indexes on workflow_state_history table
+  - changeSet:
+      id: 3-1-7-create-workflow-state-history-indexes
+      author: james-developer
+      comment: "Create indexes on workflow_state_history for audit trail queries"
+      changes:
+        - sql:
+            sql: |
+              CREATE INDEX idx_workflow_state_history_workflow_instance_id ON workflow_state_history(workflow_instance_id);
+              CREATE INDEX idx_workflow_state_history_changed_at ON workflow_state_history(changed_at);
+              CREATE INDEX idx_workflow_state_history_workflow_changed_at ON workflow_state_history(workflow_instance_id, changed_at);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_workflow_state_history_workflow_changed_at;
+              DROP INDEX IF EXISTS idx_workflow_state_history_changed_at;
+              DROP INDEX IF EXISTS idx_workflow_state_history_workflow_instance_id;
