@@ -70,4 +70,10 @@ public interface TaskInstanceRepository extends JpaRepository<TaskInstance, UUID
      * Leverages composite index (workflow_instance_id, status) for efficient counting.
      */
     Long countByWorkflowInstanceIdAndStatus(UUID workflowInstanceId, TaskStatus status);
+
+    /**
+     * Check if a user has any assigned tasks in a specific workflow.
+     * Used for authorization check - determines if user can view workflow details.
+     */
+    boolean existsByWorkflowInstanceIdAndAssignedUserId(UUID workflowInstanceId, UUID assignedUserId);
 }

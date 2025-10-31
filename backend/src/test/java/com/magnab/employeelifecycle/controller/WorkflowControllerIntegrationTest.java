@@ -34,7 +34,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.*;
 import static org.hamcrest.Matchers.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
@@ -375,5 +375,326 @@ class WorkflowControllerIntegrationTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.employeeName").value("Bob Johnson"));
+    }
+
+    // ========== GET /api/workflows Tests ==========
+
+    @Test
+    @DisplayName("GET /api/workflows - HR_ADMIN should retrieve all workflows with pagination")
+    void getWorkflows_HrAdmin_ReturnsAllWorkflows() throws Exception {
+        setupSecurityContext(hrAdminUserId, "hradmin", UserRole.HR_ADMIN);
+
+        // Create some test workflows
+        WorkflowInstance workflow1 = createTestWorkflow("Alice Adams", "alice@company.com", WorkflowType.ONBOARDING);
+        WorkflowInstance workflow2 = createTestWorkflow("Bob Brown", "bob@company.com", WorkflowType.OFFBOARDING);
+
+        // Act & Assert
+        mockMvc.perform(get("/api/workflows")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isArray())
+                .andExpect(jsonPath("$.content", hasSize(greaterThanOrEqualTo(2))))
+                .andExpect(jsonPath("$.totalElements", greaterThanOrEqualTo(2)))
+                .andExpect(jsonPath("$.content[*].employeeName", hasItems("Alice Adams", "Bob Brown")))
+                .andExpect(jsonPath("$.content[*].workflowType", hasItems("ONBOARDING", "OFFBOARDING")))
+                .andExpect(jsonPath("$.content[0].totalTasks").exists())
+                .andExpect(jsonPath("$.content[0].completedTasks").exists());
+    }
+
+    @Test
+    @DisplayName("GET /api/workflows - Should apply status filter correctly")
+    void getWorkflows_WithStatusFilter_ReturnsFilteredWorkflows() throws Exception {
+        setupSecurityContext(hrAdminUserId, "hradmin", UserRole.HR_ADMIN);
+
+        // Create workflows with different statuses
+        WorkflowInstance inProgressWorkflow = createTestWorkflow("Charlie Chen", "charlie@company.com", WorkflowType.ONBOARDING);
+        WorkflowInstance completedWorkflow = createTestWorkflow("Diana Davis", "diana@company.com", WorkflowType.ONBOARDING);
+        completedWorkflow.setStatus(WorkflowStatus.COMPLETED);
+        completedWorkflow.setCompletedAt(LocalDateTime.now());
+        workflowInstanceRepository.save(completedWorkflow);
+
+        // Act & Assert - Filter by IN_PROGRESS
+        mockMvc.perform(get("/api/workflows")
+                        .param("status", "IN_PROGRESS")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isArray())
+                .andExpect(jsonPath("$.content[*].status").value(everyItem(is("IN_PROGRESS"))));
+
+        // Filter by COMPLETED
+        mockMvc.perform(get("/api/workflows")
+                        .param("status", "COMPLETED")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isArray())
+                .andExpect(jsonPath("$.content[*].status").value(everyItem(is("COMPLETED"))));
+    }
+
+    @Test
+    @DisplayName("GET /api/workflows - Should apply workflow type filter correctly")
+    void getWorkflows_WithWorkflowTypeFilter_ReturnsFilteredWorkflows() throws Exception {
+        setupSecurityContext(hrAdminUserId, "hradmin", UserRole.HR_ADMIN);
+
+        // Create workflows with different types
+        createTestWorkflow("Eve Ellis", "eve@company.com", WorkflowType.ONBOARDING);
+        createTestWorkflow("Frank Ford", "frank@company.com", WorkflowType.OFFBOARDING);
+
+        // Act & Assert - Filter by ONBOARDING
+        mockMvc.perform(get("/api/workflows")
+                        .param("workflowType", "ONBOARDING")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[*].workflowType").value(everyItem(is("ONBOARDING"))));
+
+        // Filter by OFFBOARDING
+        mockMvc.perform(get("/api/workflows")
+                        .param("workflowType", "OFFBOARDING")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[*].workflowType").value(everyItem(is("OFFBOARDING"))));
+    }
+
+    @Test
+    @DisplayName("GET /api/workflows - Should search by employee name")
+    void getWorkflows_WithEmployeeNameSearch_ReturnsMatchingWorkflows() throws Exception {
+        setupSecurityContext(hrAdminUserId, "hradmin", UserRole.HR_ADMIN);
+
+        // Create workflows
+        createTestWorkflow("Grace Green", "grace@company.com", WorkflowType.ONBOARDING);
+        createTestWorkflow("Henry Harris", "henry@company.com", WorkflowType.ONBOARDING);
+
+        // Act & Assert - Search for "Grace"
+        mockMvc.perform(get("/api/workflows")
+                        .param("employeeName", "Grace")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isArray())
+                .andExpect(jsonPath("$.content[*].employeeName", everyItem(containsStringIgnoringCase("Grace"))));
+    }
+
+    @Test
+    @DisplayName("GET /api/workflows - Should apply pagination correctly")
+    void getWorkflows_WithPagination_ReturnsPaginatedResults() throws Exception {
+        setupSecurityContext(hrAdminUserId, "hradmin", UserRole.HR_ADMIN);
+
+        // Create several workflows
+        for (int i = 1; i <= 5; i++) {
+            createTestWorkflow("Employee" + i, "emp" + i + "@company.com", WorkflowType.ONBOARDING);
+        }
+
+        // Act & Assert - Page 0, size 2
+        mockMvc.perform(get("/api/workflows")
+                        .param("page", "0")
+                        .param("size", "2")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.size").value(2))
+                .andExpect(jsonPath("$.number").value(0))
+                .andExpect(jsonPath("$.totalElements", greaterThanOrEqualTo(5)));
+    }
+
+    @Test
+    @DisplayName("GET /api/workflows - Non-admin should see only their workflows")
+    void getWorkflows_NonAdmin_ReturnsOnlyAssignedWorkflows() throws Exception {
+        setupSecurityContext(techSupportUserId, "techsupport", UserRole.TECH_SUPPORT);
+
+        // Create workflow and assign task to tech support user
+        WorkflowInstance workflow = createTestWorkflow("Iris Iverson", "iris@company.com", WorkflowType.ONBOARDING);
+
+        // Assign a task to the tech support user
+        TaskInstance task = createTaskForWorkflow(workflow.getId(), "Setup workstation", UserRole.TECH_SUPPORT, 1);
+        task.setAssignedUserId(techSupportUserId);
+        taskInstanceRepository.save(task);
+
+        // Create another workflow that tech support is NOT involved in
+        createTestWorkflow("Jack Johnson", "jack@company.com", WorkflowType.ONBOARDING);
+
+        // Act & Assert - Should only see Iris's workflow
+        mockMvc.perform(get("/api/workflows")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isArray())
+                .andExpect(jsonPath("$.content[*].employeeName", hasItem("Iris Iverson")))
+                .andExpect(jsonPath("$.content[*].employeeName", not(hasItem("Jack Johnson"))));
+    }
+
+    @Test
+    @DisplayName("GET /api/workflows - Should return 401 when not authenticated")
+    void getWorkflows_NotAuthenticated_Returns401() throws Exception {
+        // Clear security context
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+
+        // Act & Assert
+        mockMvc.perform(get("/api/workflows")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    // ========== GET /api/workflows/{id} Tests ==========
+
+    @Test
+    @DisplayName("GET /api/workflows/{id} - HR_ADMIN can view any workflow details")
+    void getWorkflowById_HrAdmin_ReturnsWorkflowDetails() throws Exception {
+        setupSecurityContext(hrAdminUserId, "hradmin", UserRole.HR_ADMIN);
+
+        // Create test workflow
+        WorkflowInstance workflow = createTestWorkflow("Kelly King", "kelly@company.com", WorkflowType.ONBOARDING);
+
+        // Create some tasks for the workflow
+        TaskInstance task1 = createTaskForWorkflow(workflow.getId(), "Setup email", UserRole.TECH_SUPPORT, 1);
+        TaskInstance task2 = createTaskForWorkflow(workflow.getId(), "HR paperwork", UserRole.HR_ADMIN, 2);
+
+        // Create state history
+        WorkflowStateHistory history = new WorkflowStateHistory();
+        history.setWorkflowInstanceId(workflow.getId());
+        history.setPreviousStatus(WorkflowStatus.INITIATED);
+        history.setNewStatus(WorkflowStatus.IN_PROGRESS);
+        history.setChangedBy(hrAdminUserId);
+        history.setChangedAt(LocalDateTime.now());
+        history.setNotes("Workflow started");
+        workflowStateHistoryRepository.save(history);
+
+        // Act & Assert
+        mockMvc.perform(get("/api/workflows/{id}", workflow.getId())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(workflow.getId().toString()))
+                .andExpect(jsonPath("$.employeeName").value("Kelly King"))
+                .andExpect(jsonPath("$.employeeEmail").value("kelly@company.com"))
+                .andExpect(jsonPath("$.workflowType").value("ONBOARDING"))
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.tasks").isArray())
+                .andExpect(jsonPath("$.tasks", hasSize(2)))
+                .andExpect(jsonPath("$.tasks[0].taskName").exists())
+                .andExpect(jsonPath("$.stateHistory").isArray())
+                .andExpect(jsonPath("$.stateHistory", hasSize(greaterThanOrEqualTo(1))))
+                .andExpect(jsonPath("$.customFieldValues").exists());
+    }
+
+    @Test
+    @DisplayName("GET /api/workflows/{id} - Non-admin can view workflow they're involved in")
+    void getWorkflowById_AuthorizedNonAdmin_ReturnsWorkflowDetails() throws Exception {
+        setupSecurityContext(techSupportUserId, "techsupport", UserRole.TECH_SUPPORT);
+
+        // Create workflow
+        WorkflowInstance workflow = createTestWorkflow("Laura Lee", "laura@company.com", WorkflowType.ONBOARDING);
+
+        // Assign task to tech support user
+        TaskInstance task = createTaskForWorkflow(workflow.getId(), "Setup laptop", UserRole.TECH_SUPPORT, 1);
+        task.setAssignedUserId(techSupportUserId);
+        taskInstanceRepository.save(task);
+
+        // Act & Assert
+        mockMvc.perform(get("/api/workflows/{id}", workflow.getId())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(workflow.getId().toString()))
+                .andExpect(jsonPath("$.employeeName").value("Laura Lee"));
+    }
+
+    @Test
+    @DisplayName("GET /api/workflows/{id} - Non-admin cannot view workflow they're not involved in")
+    void getWorkflowById_UnauthorizedNonAdmin_Returns403() throws Exception {
+        setupSecurityContext(techSupportUserId, "techsupport", UserRole.TECH_SUPPORT);
+
+        // Create workflow that tech support is NOT involved in
+        WorkflowInstance workflow = createTestWorkflow("Mark Miller", "mark@company.com", WorkflowType.ONBOARDING);
+
+        // Create task assigned to different user
+        TaskInstance task = createTaskForWorkflow(workflow.getId(), "HR task", UserRole.HR_ADMIN, 1);
+        task.setAssignedUserId(hrAdminUserId);
+        taskInstanceRepository.save(task);
+
+        // Act & Assert
+        mockMvc.perform(get("/api/workflows/{id}", workflow.getId())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value(containsStringIgnoringCase("not authorized")));
+    }
+
+    @Test
+    @DisplayName("GET /api/workflows/{id} - Should return 404 when workflow not found")
+    void getWorkflowById_WorkflowNotFound_Returns404() throws Exception {
+        setupSecurityContext(hrAdminUserId, "hradmin", UserRole.HR_ADMIN);
+
+        UUID nonExistentId = UUID.randomUUID();
+
+        // Act & Assert
+        mockMvc.perform(get("/api/workflows/{id}", nonExistentId)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value(containsStringIgnoringCase("not found")));
+    }
+
+    @Test
+    @DisplayName("GET /api/workflows/{id} - Should return 401 when not authenticated")
+    void getWorkflowById_NotAuthenticated_Returns401() throws Exception {
+        // Create workflow
+        WorkflowInstance workflow = createTestWorkflow("Nancy Nash", "nancy@company.com", WorkflowType.ONBOARDING);
+
+        // Clear security context
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+
+        // Act & Assert
+        mockMvc.perform(get("/api/workflows/{id}", workflow.getId())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("GET /api/workflows/{id} - Should include complete custom field values")
+    void getWorkflowById_IncludesCustomFieldValues() throws Exception {
+        setupSecurityContext(hrAdminUserId, "hradmin", UserRole.HR_ADMIN);
+
+        // Create workflow with custom fields
+        WorkflowInstance workflow = createTestWorkflow("Oliver Owen", "oliver@company.com", WorkflowType.ONBOARDING);
+        Map<String, Object> customFields = new HashMap<>();
+        customFields.put("startDate", "2025-03-01");
+        customFields.put("department", "Engineering");
+        customFields.put("remoteStatus", "remote");
+        workflow.setCustomFieldValues(customFields);
+        workflowInstanceRepository.save(workflow);
+
+        // Act & Assert
+        mockMvc.perform(get("/api/workflows/{id}", workflow.getId())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.customFieldValues.startDate").value("2025-03-01"))
+                .andExpect(jsonPath("$.customFieldValues.department").value("Engineering"))
+                .andExpect(jsonPath("$.customFieldValues.remoteStatus").value("remote"));
+    }
+
+    // ========== Helper Methods ==========
+
+    private WorkflowInstance createTestWorkflow(String employeeName, String employeeEmail, WorkflowType workflowType) {
+        WorkflowInstance workflow = new WorkflowInstance();
+        workflow.setTemplateId(activeTemplateId);
+        workflow.setEmployeeName(employeeName);
+        workflow.setEmployeeEmail(employeeEmail);
+        workflow.setEmployeeRole("Software Engineer");
+        workflow.setWorkflowType(workflowType);
+        workflow.setStatus(WorkflowStatus.IN_PROGRESS);
+        workflow.setInitiatedBy(hrAdminUserId);
+        workflow.setInitiatedAt(LocalDateTime.now());
+        workflow.setCustomFieldValues(new HashMap<>());
+        return workflowInstanceRepository.save(workflow);
+    }
+
+    private TaskInstance createTaskForWorkflow(UUID workflowId, String taskName, UserRole assignedRole, int sequenceOrder) {
+        // Get a template task ID from the active template (use the first one)
+        List<TemplateTask> templateTasks = templateTaskRepository.findByTemplateIdOrderBySequenceOrder(activeTemplateId);
+        UUID templateTaskId = templateTasks.isEmpty() ? null : templateTasks.get(0).getId();
+
+        TaskInstance task = new TaskInstance();
+        task.setWorkflowInstanceId(workflowId);
+        task.setTaskName(taskName);
+        task.setAssignedRole(assignedRole);
+        task.setStatus(TaskStatus.IN_PROGRESS);
+        task.setSequenceOrder(sequenceOrder);
+        task.setIsVisible(true);
+        task.setTemplateTaskId(templateTaskId); // Use real template task ID
+        task.setCreatedAt(LocalDateTime.now());
+        task.setUpdatedAt(LocalDateTime.now());
+        return taskInstanceRepository.save(task);
     }
 }

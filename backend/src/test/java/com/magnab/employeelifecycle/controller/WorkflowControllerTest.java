@@ -2,9 +2,11 @@ package com.magnab.employeelifecycle.controller;
 
 import com.magnab.employeelifecycle.dto.request.EmployeeDetails;
 import com.magnab.employeelifecycle.dto.request.InitiateWorkflowRequest;
-import com.magnab.employeelifecycle.dto.response.TaskAssignmentResult;
-import com.magnab.employeelifecycle.dto.response.WorkflowCreationResult;
-import com.magnab.employeelifecycle.dto.response.WorkflowInitiationResponse;
+import com.magnab.employeelifecycle.dto.response.*;
+import com.magnab.employeelifecycle.enums.WorkflowType;
+import com.magnab.employeelifecycle.exception.ForbiddenException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import com.magnab.employeelifecycle.entity.User;
 import com.magnab.employeelifecycle.enums.UserRole;
 import com.magnab.employeelifecycle.enums.WorkflowStatus;
@@ -290,5 +292,314 @@ class WorkflowControllerTest {
         inOrder.verify(workflowService).createWorkflowInstance(any(UUID.class), any(EmployeeDetails.class),
                 any(Map.class), any(UUID.class));
         inOrder.verify(workflowService).assignTasksForWorkflow(workflowInstanceId);
+    }
+
+    // ========== GET /api/workflows Tests ==========
+
+    @Test
+    @DisplayName("GET /api/workflows - Should return paginated workflows for HR_ADMIN")
+    void getWorkflows_HrAdmin_ReturnsAllWorkflows() {
+        // Arrange
+        WorkflowSummaryResponse summary1 = new WorkflowSummaryResponse();
+        summary1.setId(UUID.randomUUID());
+        summary1.setEmployeeName("John Doe");
+        summary1.setWorkflowType(WorkflowType.ONBOARDING);
+        summary1.setStatus(WorkflowStatus.IN_PROGRESS);
+        summary1.setInitiatedAt(LocalDateTime.now());
+        summary1.setTotalTasks(15);
+        summary1.setCompletedTasks(5);
+
+        WorkflowSummaryResponse summary2 = new WorkflowSummaryResponse();
+        summary2.setId(UUID.randomUUID());
+        summary2.setEmployeeName("Jane Smith");
+        summary2.setWorkflowType(WorkflowType.OFFBOARDING);
+        summary2.setStatus(WorkflowStatus.COMPLETED);
+        summary2.setInitiatedAt(LocalDateTime.now().minusDays(5));
+        summary2.setTotalTasks(12);
+        summary2.setCompletedTasks(12);
+
+        Page<WorkflowSummaryResponse> expectedPage = new PageImpl<>(List.of(summary1, summary2));
+
+        when(workflowService.getWorkflows(
+                any(), any(), any(), any(), any(), anyInt(), anyInt(), any(UUID.class), any(UserRole.class)
+        )).thenReturn(expectedPage);
+
+        // Act
+        ResponseEntity<Page<WorkflowSummaryResponse>> response = workflowController.getWorkflows(
+                null, null, null, "initiatedAt", "desc", 0, 50
+        );
+
+        // Assert
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getContent()).hasSize(2);
+        assertThat(response.getBody().getContent().get(0).getEmployeeName()).isEqualTo("John Doe");
+        assertThat(response.getBody().getContent().get(1).getEmployeeName()).isEqualTo("Jane Smith");
+
+        verify(workflowService).getWorkflows(
+                null, null, null, "initiatedAt", "desc", 0, 50, userId, UserRole.HR_ADMIN
+        );
+    }
+
+    @Test
+    @DisplayName("GET /api/workflows - Should apply filters correctly")
+    void getWorkflows_WithFilters_AppliesFilters() {
+        // Arrange
+        Page<WorkflowSummaryResponse> expectedPage = new PageImpl<>(Collections.emptyList());
+
+        when(workflowService.getWorkflows(
+                eq("IN_PROGRESS"), eq("ONBOARDING"), eq("John"), any(), any(), anyInt(), anyInt(),
+                any(UUID.class), any(UserRole.class)
+        )).thenReturn(expectedPage);
+
+        // Act
+        ResponseEntity<Page<WorkflowSummaryResponse>> response = workflowController.getWorkflows(
+                "IN_PROGRESS", "ONBOARDING", "John", "employeeName", "asc", 1, 20
+        );
+
+        // Assert
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(workflowService).getWorkflows(
+                "IN_PROGRESS", "ONBOARDING", "John", "employeeName", "asc", 1, 20, userId, UserRole.HR_ADMIN
+        );
+    }
+
+    @Test
+    @DisplayName("GET /api/workflows - Should return workflows for non-admin user")
+    void getWorkflows_NonAdminUser_ReturnsUserWorkflows() {
+        // Arrange
+        setupSecurityContext(UserRole.TECH_SUPPORT);
+
+        WorkflowSummaryResponse summary = new WorkflowSummaryResponse();
+        summary.setId(UUID.randomUUID());
+        summary.setEmployeeName("John Doe");
+        summary.setWorkflowType(WorkflowType.ONBOARDING);
+        summary.setStatus(WorkflowStatus.IN_PROGRESS);
+
+        Page<WorkflowSummaryResponse> expectedPage = new PageImpl<>(List.of(summary));
+
+        when(workflowService.getWorkflows(
+                any(), any(), any(), any(), any(), anyInt(), anyInt(), any(UUID.class), eq(UserRole.TECH_SUPPORT)
+        )).thenReturn(expectedPage);
+
+        // Act
+        ResponseEntity<Page<WorkflowSummaryResponse>> response = workflowController.getWorkflows(
+                null, null, null, "initiatedAt", "desc", 0, 50
+        );
+
+        // Assert
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getContent()).hasSize(1);
+
+        verify(workflowService).getWorkflows(
+                null, null, null, "initiatedAt", "desc", 0, 50, userId, UserRole.TECH_SUPPORT
+        );
+    }
+
+    @Test
+    @DisplayName("GET /api/workflows - Should return empty page when no workflows")
+    void getWorkflows_NoWorkflows_ReturnsEmptyPage() {
+        // Arrange
+        Page<WorkflowSummaryResponse> emptyPage = new PageImpl<>(Collections.emptyList());
+
+        when(workflowService.getWorkflows(
+                any(), any(), any(), any(), any(), anyInt(), anyInt(), any(UUID.class), any(UserRole.class)
+        )).thenReturn(emptyPage);
+
+        // Act
+        ResponseEntity<Page<WorkflowSummaryResponse>> response = workflowController.getWorkflows(
+                null, null, null, "initiatedAt", "desc", 0, 50
+        );
+
+        // Assert
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getContent()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("GET /api/workflows - Should throw UnauthorizedException when not authenticated")
+    void getWorkflows_NoAuthentication_ThrowsUnauthorizedException() {
+        // Arrange
+        SecurityContext securityContext = mock(SecurityContext.class);
+        when(securityContext.getAuthentication()).thenReturn(null);
+        SecurityContextHolder.setContext(securityContext);
+
+        // Act & Assert
+        assertThatThrownBy(() -> workflowController.getWorkflows(
+                null, null, null, "initiatedAt", "desc", 0, 50
+        ))
+                .isInstanceOf(UnauthorizedException.class)
+                .hasMessageContaining("authenticated");
+
+        verify(workflowService, never()).getWorkflows(
+                any(), any(), any(), any(), any(), anyInt(), anyInt(), any(), any()
+        );
+    }
+
+    // ========== GET /api/workflows/{id} Tests ==========
+
+    @Test
+    @DisplayName("GET /api/workflows/{id} - Should return workflow details for HR_ADMIN")
+    void getWorkflowById_HrAdmin_ReturnsWorkflowDetails() {
+        // Arrange
+        UUID workflowId = UUID.randomUUID();
+
+        WorkflowDetailResponse expectedResponse = new WorkflowDetailResponse();
+        expectedResponse.setId(workflowId);
+        expectedResponse.setEmployeeName("John Doe");
+        expectedResponse.setEmployeeEmail("john.doe@company.com");
+        expectedResponse.setEmployeeRole("Software Engineer");
+        expectedResponse.setWorkflowType(WorkflowType.ONBOARDING);
+        expectedResponse.setStatus(WorkflowStatus.IN_PROGRESS);
+        expectedResponse.setInitiatedAt(LocalDateTime.now());
+        expectedResponse.setCustomFieldValues(Map.of("startDate", "2025-02-01"));
+        expectedResponse.setTasks(new ArrayList<>());
+        expectedResponse.setStateHistory(new ArrayList<>());
+
+        when(workflowService.getWorkflowById(eq(workflowId), any(UUID.class), any(UserRole.class)))
+                .thenReturn(expectedResponse);
+
+        // Act
+        ResponseEntity<WorkflowDetailResponse> response = workflowController.getWorkflowById(workflowId);
+
+        // Assert
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getId()).isEqualTo(workflowId);
+        assertThat(response.getBody().getEmployeeName()).isEqualTo("John Doe");
+        assertThat(response.getBody().getWorkflowType()).isEqualTo(WorkflowType.ONBOARDING);
+        assertThat(response.getBody().getTasks()).isNotNull();
+        assertThat(response.getBody().getStateHistory()).isNotNull();
+
+        verify(workflowService).getWorkflowById(workflowId, userId, UserRole.HR_ADMIN);
+    }
+
+    @Test
+    @DisplayName("GET /api/workflows/{id} - Should return workflow details for authorized non-admin")
+    void getWorkflowById_AuthorizedNonAdmin_ReturnsWorkflowDetails() {
+        // Arrange
+        setupSecurityContext(UserRole.TECH_SUPPORT);
+        UUID workflowId = UUID.randomUUID();
+
+        WorkflowDetailResponse expectedResponse = new WorkflowDetailResponse();
+        expectedResponse.setId(workflowId);
+        expectedResponse.setEmployeeName("Jane Smith");
+        expectedResponse.setWorkflowType(WorkflowType.ONBOARDING);
+        expectedResponse.setStatus(WorkflowStatus.IN_PROGRESS);
+        expectedResponse.setTasks(new ArrayList<>());
+        expectedResponse.setStateHistory(new ArrayList<>());
+
+        when(workflowService.getWorkflowById(eq(workflowId), any(UUID.class), eq(UserRole.TECH_SUPPORT)))
+                .thenReturn(expectedResponse);
+
+        // Act
+        ResponseEntity<WorkflowDetailResponse> response = workflowController.getWorkflowById(workflowId);
+
+        // Assert
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getId()).isEqualTo(workflowId);
+
+        verify(workflowService).getWorkflowById(workflowId, userId, UserRole.TECH_SUPPORT);
+    }
+
+    @Test
+    @DisplayName("GET /api/workflows/{id} - Should throw ResourceNotFoundException when workflow not found")
+    void getWorkflowById_WorkflowNotFound_ThrowsResourceNotFoundException() {
+        // Arrange
+        UUID workflowId = UUID.randomUUID();
+
+        when(workflowService.getWorkflowById(eq(workflowId), any(UUID.class), any(UserRole.class)))
+                .thenThrow(new ResourceNotFoundException("Workflow not found with id: " + workflowId));
+
+        // Act & Assert
+        assertThatThrownBy(() -> workflowController.getWorkflowById(workflowId))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("not found");
+
+        verify(workflowService).getWorkflowById(workflowId, userId, UserRole.HR_ADMIN);
+    }
+
+    @Test
+    @DisplayName("GET /api/workflows/{id} - Should throw ForbiddenException for unauthorized non-admin")
+    void getWorkflowById_UnauthorizedNonAdmin_ThrowsForbiddenException() {
+        // Arrange
+        setupSecurityContext(UserRole.TECH_SUPPORT);
+        UUID workflowId = UUID.randomUUID();
+
+        when(workflowService.getWorkflowById(eq(workflowId), any(UUID.class), eq(UserRole.TECH_SUPPORT)))
+                .thenThrow(new ForbiddenException("Access denied: You are not authorized to view this workflow"));
+
+        // Act & Assert
+        assertThatThrownBy(() -> workflowController.getWorkflowById(workflowId))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("not authorized");
+
+        verify(workflowService).getWorkflowById(workflowId, userId, UserRole.TECH_SUPPORT);
+    }
+
+    @Test
+    @DisplayName("GET /api/workflows/{id} - Should throw UnauthorizedException when not authenticated")
+    void getWorkflowById_NoAuthentication_ThrowsUnauthorizedException() {
+        // Arrange
+        UUID workflowId = UUID.randomUUID();
+
+        SecurityContext securityContext = mock(SecurityContext.class);
+        when(securityContext.getAuthentication()).thenReturn(null);
+        SecurityContextHolder.setContext(securityContext);
+
+        // Act & Assert
+        assertThatThrownBy(() -> workflowController.getWorkflowById(workflowId))
+                .isInstanceOf(UnauthorizedException.class)
+                .hasMessageContaining("authenticated");
+
+        verify(workflowService, never()).getWorkflowById(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("GET /api/workflows/{id} - Should include tasks and state history in response")
+    void getWorkflowById_IncludesTasksAndStateHistory() {
+        // Arrange
+        UUID workflowId = UUID.randomUUID();
+
+        TaskInstanceSummary task1 = new TaskInstanceSummary();
+        task1.setId(UUID.randomUUID());
+        task1.setTaskName("Setup laptop");
+        task1.setStatus(com.magnab.employeelifecycle.enums.TaskStatus.COMPLETED);
+
+        TaskInstanceSummary task2 = new TaskInstanceSummary();
+        task2.setId(UUID.randomUUID());
+        task2.setTaskName("Send welcome email");
+        task2.setStatus(com.magnab.employeelifecycle.enums.TaskStatus.IN_PROGRESS);
+
+        WorkflowStateHistoryEntry historyEntry = new WorkflowStateHistoryEntry();
+        historyEntry.setId(UUID.randomUUID());
+        historyEntry.setPreviousStatus(WorkflowStatus.INITIATED);
+        historyEntry.setNewStatus(WorkflowStatus.IN_PROGRESS);
+        historyEntry.setChangedAt(LocalDateTime.now());
+
+        WorkflowDetailResponse expectedResponse = new WorkflowDetailResponse();
+        expectedResponse.setId(workflowId);
+        expectedResponse.setEmployeeName("John Doe");
+        expectedResponse.setWorkflowType(WorkflowType.ONBOARDING);
+        expectedResponse.setStatus(WorkflowStatus.IN_PROGRESS);
+        expectedResponse.setTasks(List.of(task1, task2));
+        expectedResponse.setStateHistory(List.of(historyEntry));
+
+        when(workflowService.getWorkflowById(eq(workflowId), any(UUID.class), any(UserRole.class)))
+                .thenReturn(expectedResponse);
+
+        // Act
+        ResponseEntity<WorkflowDetailResponse> response = workflowController.getWorkflowById(workflowId);
+
+        // Assert
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getTasks()).hasSize(2);
+        assertThat(response.getBody().getTasks().get(0).getTaskName()).isEqualTo("Setup laptop");
+        assertThat(response.getBody().getStateHistory()).hasSize(1);
+        assertThat(response.getBody().getStateHistory().get(0).getNewStatus()).isEqualTo(WorkflowStatus.IN_PROGRESS);
     }
 }

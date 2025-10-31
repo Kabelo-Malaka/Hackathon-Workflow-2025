@@ -1,18 +1,20 @@
 package com.magnab.employeelifecycle.service;
 
 import com.magnab.employeelifecycle.dto.request.EmployeeDetails;
-import com.magnab.employeelifecycle.dto.response.TaskAssignmentResult;
-import com.magnab.employeelifecycle.dto.response.TaskStatusUpdate;
-import com.magnab.employeelifecycle.dto.response.WorkflowCreationResult;
-import com.magnab.employeelifecycle.dto.response.WorkflowStateSummary;
+import com.magnab.employeelifecycle.dto.response.*;
 import com.magnab.employeelifecycle.entity.*;
 import com.magnab.employeelifecycle.enums.TaskStatus;
 import com.magnab.employeelifecycle.enums.UserRole;
 import com.magnab.employeelifecycle.enums.WorkflowStatus;
+import com.magnab.employeelifecycle.exception.ForbiddenException;
 import com.magnab.employeelifecycle.exception.ResourceNotFoundException;
 import com.magnab.employeelifecycle.exception.ValidationException;
 import com.magnab.employeelifecycle.repository.*;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -671,5 +673,213 @@ public class WorkflowService {
             case BLOCKED -> next == TaskStatus.IN_PROGRESS;
             default -> false;
         };
+    }
+
+    /**
+     * Retrieves workflows with pagination, filtering, and sorting.
+     * HR_ADMIN sees all workflows; other roles see only workflows where they have assigned tasks.
+     *
+     * @param status Optional status filter
+     * @param workflowType Optional workflow type filter
+     * @param employeeNameSearch Optional case-insensitive employee name search
+     * @param sortBy Field to sort by (default: initiatedAt)
+     * @param sortDirection Sort direction (asc/desc, default: desc)
+     * @param page Page number (0-indexed)
+     * @param size Page size (default: 50)
+     * @param currentUserId ID of the current user
+     * @param currentUserRole Role of the current user
+     * @return Page of WorkflowSummaryResponse DTOs
+     */
+    @Transactional(readOnly = true)
+    public Page<WorkflowSummaryResponse> getWorkflows(
+            String status,
+            String workflowType,
+            String employeeNameSearch,
+            String sortBy,
+            String sortDirection,
+            int page,
+            int size,
+            UUID currentUserId,
+            UserRole currentUserRole
+    ) {
+        log.info("Fetching workflows for user: {}, role: {}, filters: status={}, type={}, name={}",
+                currentUserId, currentUserRole, status, workflowType, employeeNameSearch);
+
+        // Parse optional filter parameters
+        WorkflowStatus workflowStatus = (status != null && !status.isBlank())
+                ? WorkflowStatus.valueOf(status.toUpperCase())
+                : null;
+
+        // Build sort criteria
+        Sort.Direction direction = "asc".equalsIgnoreCase(sortDirection)
+                ? Sort.Direction.ASC
+                : Sort.Direction.DESC;
+        Sort sort = Sort.by(direction, sortBy != null ? sortBy : "initiatedAt");
+        Pageable pageable = PageRequest.of(page, size, sort);
+
+        // Fetch workflows based on user role
+        Page<WorkflowInstance> workflowPage;
+        if (currentUserRole == UserRole.HR_ADMIN) {
+            // HR_ADMIN sees all workflows
+            workflowPage = workflowInstanceRepository.findAllByFilters(
+                    workflowStatus, workflowType, employeeNameSearch, pageable);
+        } else {
+            // Other roles see only workflows where they have assigned tasks
+            workflowPage = workflowInstanceRepository.findByUserHasAssignedTasks(
+                    currentUserId, workflowStatus, workflowType, employeeNameSearch, pageable);
+        }
+
+        // Map to summary DTOs
+        return workflowPage.map(this::mapToWorkflowSummary);
+    }
+
+    /**
+     * Retrieves detailed information for a specific workflow.
+     * Includes workflow metadata, custom fields, all tasks, and state history.
+     * Non-admin users can only view workflows they're involved in.
+     *
+     * @param workflowId The workflow instance ID
+     * @param currentUserId ID of the current user
+     * @param currentUserRole Role of the current user
+     * @return WorkflowDetailResponse with complete workflow information
+     * @throws ResourceNotFoundException if workflow not found
+     * @throws ForbiddenException if user not authorized to view workflow
+     */
+    @Transactional(readOnly = true)
+    public WorkflowDetailResponse getWorkflowById(
+            UUID workflowId,
+            UUID currentUserId,
+            UserRole currentUserRole
+    ) {
+        log.info("Fetching workflow details: {} for user: {}", workflowId, currentUserId);
+
+        // Retrieve workflow instance
+        WorkflowInstance workflow = workflowInstanceRepository.findById(workflowId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Workflow not found with id: " + workflowId));
+
+        // Check authorization for non-admin users
+        if (currentUserRole != UserRole.HR_ADMIN) {
+            boolean hasAccess = taskInstanceRepository
+                    .existsByWorkflowInstanceIdAndAssignedUserId(workflowId, currentUserId);
+            if (!hasAccess) {
+                throw new ForbiddenException(
+                        "Access denied: You are not authorized to view this workflow");
+            }
+        }
+
+        // Retrieve all task instances for workflow
+        List<TaskInstance> tasks = taskInstanceRepository
+                .findByWorkflowInstanceIdOrderBySequenceOrder(workflowId);
+
+        // Retrieve workflow state history
+        List<WorkflowStateHistory> stateHistory = workflowStateHistoryRepository
+                .findByWorkflowInstanceIdOrderByChangedAtDesc(workflowId);
+
+        // Map to detail DTO
+        return mapToWorkflowDetail(workflow, tasks, stateHistory);
+    }
+
+    /**
+     * Maps WorkflowInstance entity to WorkflowSummaryResponse DTO.
+     * Calculates totalTasks and completedTasks by querying task instances.
+     */
+    private WorkflowSummaryResponse mapToWorkflowSummary(WorkflowInstance workflow) {
+        WorkflowSummaryResponse response = new WorkflowSummaryResponse();
+        response.setId(workflow.getId());
+        response.setEmployeeName(workflow.getEmployeeName());
+        response.setWorkflowType(workflow.getWorkflowType());
+        response.setStatus(workflow.getStatus());
+        response.setInitiatedAt(workflow.getInitiatedAt());
+
+        // Calculate task counts
+        List<TaskInstance> tasks = taskInstanceRepository.findByWorkflowInstanceId(workflow.getId());
+        response.setTotalTasks(tasks.size());
+        response.setCompletedTasks(
+                (int) tasks.stream().filter(t -> t.getStatus() == TaskStatus.COMPLETED).count());
+
+        return response;
+    }
+
+    /**
+     * Maps WorkflowInstance, TaskInstances, and WorkflowStateHistory to WorkflowDetailResponse DTO.
+     */
+    private WorkflowDetailResponse mapToWorkflowDetail(
+            WorkflowInstance workflow,
+            List<TaskInstance> tasks,
+            List<WorkflowStateHistory> stateHistory
+    ) {
+        WorkflowDetailResponse response = new WorkflowDetailResponse();
+        response.setId(workflow.getId());
+        response.setEmployeeName(workflow.getEmployeeName());
+        response.setEmployeeEmail(workflow.getEmployeeEmail());
+        response.setEmployeeRole(workflow.getEmployeeRole());
+        response.setWorkflowType(workflow.getWorkflowType());
+        response.setStatus(workflow.getStatus());
+        response.setInitiatedAt(workflow.getInitiatedAt());
+        response.setCompletedAt(workflow.getCompletedAt());
+        response.setInitiatedBy(workflow.getInitiatedBy());
+        response.setCustomFieldValues(workflow.getCustomFieldValues());
+
+        // Map task instances to summary DTOs
+        List<TaskInstanceSummary> taskSummaries = tasks.stream()
+                .map(this::mapToTaskInstanceSummary)
+                .collect(Collectors.toList());
+        response.setTasks(taskSummaries);
+
+        // Map state history to entry DTOs
+        List<WorkflowStateHistoryEntry> historyEntries = stateHistory.stream()
+                .map(this::mapToWorkflowStateHistoryEntry)
+                .collect(Collectors.toList());
+        response.setStateHistory(historyEntries);
+
+        return response;
+    }
+
+    /**
+     * Maps TaskInstance entity to TaskInstanceSummary DTO.
+     */
+    private TaskInstanceSummary mapToTaskInstanceSummary(TaskInstance task) {
+        TaskInstanceSummary summary = new TaskInstanceSummary();
+        summary.setId(task.getId());
+        summary.setTaskName(task.getTaskName());
+        summary.setStatus(task.getStatus());
+        summary.setAssignedUserId(task.getAssignedUserId());
+
+        // Get assigned user name if user is assigned
+        if (task.getAssignedUserId() != null) {
+            userRepository.findById(task.getAssignedUserId())
+                    .ifPresent(user -> summary.setAssignedUserName(user.getUsername()));
+        }
+
+        summary.setAssignedRole(task.getAssignedRole() != null ? task.getAssignedRole().name() : null);
+        summary.setIsVisible(task.getIsVisible());
+        summary.setDueDate(task.getDueDate());
+        summary.setCompletedAt(task.getCompletedAt());
+        summary.setCompletedBy(task.getCompletedBy());
+
+        return summary;
+    }
+
+    /**
+     * Maps WorkflowStateHistory entity to WorkflowStateHistoryEntry DTO.
+     */
+    private WorkflowStateHistoryEntry mapToWorkflowStateHistoryEntry(WorkflowStateHistory history) {
+        WorkflowStateHistoryEntry entry = new WorkflowStateHistoryEntry();
+        entry.setId(history.getId());
+        entry.setPreviousStatus(history.getPreviousStatus());
+        entry.setNewStatus(history.getNewStatus());
+        entry.setChangedBy(history.getChangedBy());
+
+        // Get user name who made the change
+        if (history.getChangedBy() != null) {
+            userRepository.findById(history.getChangedBy())
+                    .ifPresent(user -> entry.setChangedByName(user.getUsername()));
+        }
+
+        entry.setChangedAt(history.getChangedAt());
+        entry.setNotes(history.getNotes());
+
+        return entry;
     }
 }

@@ -76,6 +76,20 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle ForbiddenException - return 403 Forbidden.
+     */
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ErrorResponse> handleForbiddenException(ForbiddenException ex) {
+        ErrorResponse error = new ErrorResponse(
+            HttpStatus.FORBIDDEN.value(),
+            "Forbidden",
+            ex.getMessage(),
+            LocalDateTime.now()
+        );
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
+    }
+
+    /**
      * Handle AccessDeniedException - return 403 Forbidden.
      */
     @ExceptionHandler(AccessDeniedException.class)
