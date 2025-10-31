@@ -52,6 +52,9 @@ public class WorkflowTemplate {
     @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.NAMED_ENUM)
     private WorkflowStatus defaultStatus = WorkflowStatus.INITIATED;
 
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = true;
+
     @OneToMany(mappedBy = "template", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<TemplateTask> tasks = new ArrayList<>();
 

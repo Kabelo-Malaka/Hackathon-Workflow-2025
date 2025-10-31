@@ -273,3 +273,40 @@ databaseChangeLog:
             sql: |
               DELETE FROM template_tasks WHERE template_id = '550e8400-e29b-41d4-a716-446655440001';
               DELETE FROM workflow_templates WHERE id = '550e8400-e29b-41d4-a716-446655440001';
+
+  # Changeset 009: Add missing fields to align with acceptance criteria
+  - changeSet:
+      id: 009-add-missing-fields-to-templates-and-tasks
+      author: developer
+      comment: "Add is_active field to workflow_templates and assigned_role, is_parallel fields to template_tasks to match Story 2.1 acceptance criteria"
+      changes:
+        - sql:
+            sql: |
+              -- Add is_active field to workflow_templates
+              ALTER TABLE workflow_templates
+              ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE;
+
+              -- Add assigned_role field to template_tasks (reuse existing user_role enum)
+              ALTER TABLE template_tasks
+              ADD COLUMN assigned_role user_role NOT NULL DEFAULT 'HR_ADMIN';
+
+              -- Add is_parallel field to template_tasks
+              ALTER TABLE template_tasks
+              ADD COLUMN is_parallel BOOLEAN NOT NULL DEFAULT FALSE;
+
+              -- Create index on assigned_role for filtering
+              CREATE INDEX idx_template_tasks_assigned_role ON template_tasks(assigned_role);
+
+              -- Update seed data with proper role assignments
+              UPDATE template_tasks SET assigned_role = 'TECH_SUPPORT' WHERE id = '550e8400-e29b-41d4-a716-446655440101';
+              UPDATE template_tasks SET assigned_role = 'TECH_SUPPORT' WHERE id = '550e8400-e29b-41d4-a716-446655440102';
+              UPDATE template_tasks SET assigned_role = 'HR_ADMIN' WHERE id = '550e8400-e29b-41d4-a716-446655440103';
+              UPDATE template_tasks SET assigned_role = 'HR_ADMIN', is_parallel = TRUE WHERE id = '550e8400-e29b-41d4-a716-446655440104';
+              UPDATE template_tasks SET assigned_role = 'ADMINISTRATOR' WHERE id = '550e8400-e29b-41d4-a716-446655440105';
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_template_tasks_assigned_role;
+              ALTER TABLE template_tasks DROP COLUMN IF EXISTS is_parallel;
+              ALTER TABLE template_tasks DROP COLUMN IF EXISTS assigned_role;
+              ALTER TABLE workflow_templates DROP COLUMN IF EXISTS is_active;

@@ -1,5 +1,6 @@
 package com.magnab.employeelifecycle.entity;
 
+import com.magnab.employeelifecycle.enums.UserRole;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -44,6 +45,14 @@ public class TemplateTask {
 
     @Column(name = "sequence_order", nullable = false)
     private Integer sequenceOrder;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "assigned_role", nullable = false)
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.NAMED_ENUM)
+    private UserRole assignedRole = UserRole.HR_ADMIN;
+
+    @Column(name = "is_parallel", nullable = false)
+    private Boolean isParallel = false;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "depends_on_task_id")
