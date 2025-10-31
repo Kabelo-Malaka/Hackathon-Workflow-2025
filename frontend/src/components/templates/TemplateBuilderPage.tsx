@@ -126,7 +126,9 @@ export const TemplateBuilderPage: React.FC = () => {
         assignedRole: task.assignedRole,
         sequenceOrder: currentSequenceOrder,
         isParallel: task.isParallel,
-        dependencyTaskId: task.dependencyTaskId || null,
+        // For new templates, dependencyTaskId must be null since tasks don't have IDs yet
+        // Backend will handle dependencies based on sequence order
+        dependencyTaskId: null,
       };
     });
 

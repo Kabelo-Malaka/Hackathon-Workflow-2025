@@ -1,4 +1,5 @@
-import { useMemo, Controller } from 'react-hook-form';
+import { useMemo } from 'react';
+import { Controller } from 'react-hook-form';
 import type { Control, FieldErrors, FieldArrayWithId } from 'react-hook-form';
 import {
   Card,
@@ -198,7 +199,7 @@ export const TaskFormItem: React.FC<TaskFormItemProps> = ({
                   label="Task Dependency"
                 >
                   <MenuItem value="">No Dependency</MenuItem>
-                  {dependencyOptions.map((option) => (
+                  {dependencyOptions.map((option: { value: string; label: string }) => (
                     <MenuItem key={option.value} value={option.value}>
                       {option.label}
                     </MenuItem>
