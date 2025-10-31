@@ -1,6 +1,7 @@
 package com.magnab.employeelifecycle.service;
 
 import com.magnab.employeelifecycle.dto.request.EmployeeDetails;
+import com.magnab.employeelifecycle.dto.response.TaskAssignmentResult;
 import com.magnab.employeelifecycle.dto.response.WorkflowCreationResult;
 import com.magnab.employeelifecycle.entity.*;
 import com.magnab.employeelifecycle.enums.TaskStatus;
@@ -19,6 +20,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.LocalDateTime;
 import java.util.*;
 
 import static org.assertj.core.api.Assertions.*;
@@ -477,6 +479,386 @@ class WorkflowServiceIntegrationTest {
             assertThat(workflow.getCustomFieldValues()).containsEntry("department", "Engineering");
             assertThat(workflow.getCustomFieldValues()).containsEntry("salary", 100000);
             assertThat(workflow.getCustomFieldValues()).containsKey("benefits");
+        }
+    }
+
+    @Nested
+    @DisplayName("Story 3.3: Task Assignment & Routing Integration Tests")
+    class TaskAssignmentIntegrationTests {
+
+        private User hrUser1;
+        private User hrUser2;
+        private User techUser;
+        private User managerUser;
+        private WorkflowInstance testWorkflowInstance;
+
+        @BeforeEach
+        void setupAssignmentData() {
+            // Create HR users for load balancing tests
+            hrUser1 = new User();
+            hrUser1.setUsername("hr_user1");
+            hrUser1.setEmail("hr1@test.com");
+            hrUser1.setPasswordHash("hashed");
+            hrUser1.setRole(UserRole.HR_ADMIN);
+            hrUser1.setIsActive(true);
+            hrUser1 = userRepository.save(hrUser1);
+
+            hrUser2 = new User();
+            hrUser2.setUsername("hr_user2");
+            hrUser2.setEmail("hr2@test.com");
+            hrUser2.setPasswordHash("hashed");
+            hrUser2.setRole(UserRole.HR_ADMIN);
+            hrUser2.setIsActive(true);
+            hrUser2 = userRepository.save(hrUser2);
+
+            // Create tech support user
+            techUser = new User();
+            techUser.setUsername("tech_user");
+            techUser.setEmail("tech@test.com");
+            techUser.setPasswordHash("hashed");
+            techUser.setRole(UserRole.TECH_SUPPORT);
+            techUser.setIsActive(true);
+            techUser = userRepository.save(techUser);
+
+            // Create manager user
+            managerUser = new User();
+            managerUser.setUsername("manager_user");
+            managerUser.setEmail("manager@test.com");
+            managerUser.setPasswordHash("hashed");
+            managerUser.setRole(UserRole.LINE_MANAGER);
+            managerUser.setIsActive(true);
+            managerUser = userRepository.save(managerUser);
+
+            // Create a workflow instance for testing
+            EmployeeDetails employeeDetails = new EmployeeDetails();
+            employeeDetails.setEmployeeName("Assignment Test Employee");
+            employeeDetails.setEmployeeEmail("assignment.test@example.com");
+            employeeDetails.setEmployeeRole("Software Engineer");
+
+            WorkflowCreationResult creationResult = workflowService.createWorkflowInstance(
+                    testTemplate.getId(), employeeDetails, null, testUser.getId());
+
+            testWorkflowInstance = workflowInstanceRepository.findById(creationResult.getWorkflowInstanceId())
+                    .orElseThrow();
+        }
+
+        @Test
+        @DisplayName("Should assign tasks with correct status, due date, and persist to database")
+        void shouldAssignTasksWithCorrectData() {
+            // Act
+            LocalDateTime beforeAssignment = LocalDateTime.now();
+            List<TaskAssignmentResult> results = workflowService.assignTasksForWorkflow(testWorkflowInstance.getId());
+            LocalDateTime afterAssignment = LocalDateTime.now().plusDays(2).plusMinutes(1);
+
+            // Assert: Should assign all 3 tasks (no dependencies in test template)
+            assertThat(results).hasSize(3);
+
+            // Verify all results have correct structure
+            for (TaskAssignmentResult result : results) {
+                assertThat(result.getTaskInstanceId()).isNotNull();
+                assertThat(result.getAssignedUserId()).isNotNull();
+                assertThat(result.getAssignedUserEmail()).isNotNull();
+                assertThat(result.getTaskName()).isNotNull();
+                assertThat(result.getDueDate()).isNotNull();
+                assertThat(result.getDueDate()).isAfterOrEqualTo(beforeAssignment.plusDays(2));
+                assertThat(result.getDueDate()).isBefore(afterAssignment);
+            }
+
+            // Verify database persistence
+            List<TaskInstance> allTasks = taskInstanceRepository
+                    .findByWorkflowInstanceId(testWorkflowInstance.getId());
+
+            assertThat(allTasks).hasSize(3);
+            assertThat(allTasks).allMatch(task -> task.getStatus() == TaskStatus.IN_PROGRESS);
+            assertThat(allTasks).allMatch(task -> task.getAssignedUserId() != null);
+            assertThat(allTasks).allMatch(task -> task.getDueDate() != null);
+        }
+
+        @Test
+        @DisplayName("Should implement load balancing - assign to user with fewer IN_PROGRESS tasks")
+        void shouldImplementLoadBalancing() {
+            // Arrange: Create additional workflow and assign tasks to hrUser1
+            EmployeeDetails employeeDetails = new EmployeeDetails();
+            employeeDetails.setEmployeeName("Load Balancing Test");
+            employeeDetails.setEmployeeEmail("loadbalance@test.com");
+            employeeDetails.setEmployeeRole("Engineer");
+
+            WorkflowCreationResult workflow2 = workflowService.createWorkflowInstance(
+                    testTemplate.getId(), employeeDetails, null, testUser.getId());
+
+            // Manually assign 2 tasks to hrUser1 to create load imbalance
+            List<TaskInstance> workflow2Tasks = taskInstanceRepository
+                    .findByWorkflowInstanceId(workflow2.getWorkflowInstanceId());
+
+            TaskInstance task1 = workflow2Tasks.get(0);
+            task1.setAssignedUserId(hrUser1.getId());
+            task1.setStatus(TaskStatus.IN_PROGRESS);
+            taskInstanceRepository.save(task1);
+
+            // Act: Assign tasks for testWorkflowInstance
+            List<TaskAssignmentResult> results = workflowService.assignTasksForWorkflow(testWorkflowInstance.getId());
+
+            // Assert: HR tasks should be assigned to hrUser2 (less load)
+            List<TaskAssignmentResult> hrTasks = results.stream()
+                    .filter(r -> r.getTaskName().equals("HR Setup"))
+                    .toList();
+
+            assertThat(hrTasks).hasSize(1);
+            assertThat(hrTasks.get(0).getAssignedUserId()).isEqualTo(hrUser2.getId());
+            assertThat(hrTasks.get(0).getAssignedUserEmail()).isEqualTo("hr2@test.com");
+        }
+
+        @Test
+        @DisplayName("Should only assign tasks with satisfied dependencies")
+        void shouldRespectDependencies() {
+            // Arrange: Create template with dependencies
+            WorkflowTemplate dependencyTemplate = new WorkflowTemplate();
+            dependencyTemplate.setTemplateName("Dependency Test Template");
+            dependencyTemplate.setWorkflowType(com.magnab.employeelifecycle.enums.WorkflowType.ONBOARDING);
+            dependencyTemplate.setIsActive(true);
+            dependencyTemplate.setCreatedBy(testUser.getId());
+            dependencyTemplate = workflowTemplateRepository.save(dependencyTemplate);
+
+            // Task 1: No dependency
+            TemplateTask task1 = new TemplateTask();
+            task1.setTemplate(dependencyTemplate);
+            task1.setTaskName("First Task");
+            task1.setAssignedRole(UserRole.HR_ADMIN);
+            task1.setSequenceOrder(1);
+            task1.setCreatedBy(testUser.getId());
+            task1 = templateTaskRepository.save(task1);
+
+            // Task 2: Depends on task1
+            TemplateTask task2 = new TemplateTask();
+            task2.setTemplate(dependencyTemplate);
+            task2.setTaskName("Second Task");
+            task2.setAssignedRole(UserRole.TECH_SUPPORT);
+            task2.setSequenceOrder(2);
+            task2.setDependsOnTask(task1);
+            task2.setCreatedBy(testUser.getId());
+            task2 = templateTaskRepository.save(task2);
+
+            // Create workflow instance
+            EmployeeDetails employeeDetails = new EmployeeDetails();
+            employeeDetails.setEmployeeName("Dependency Test");
+            employeeDetails.setEmployeeEmail("dep@test.com");
+            employeeDetails.setEmployeeRole("Engineer");
+
+            WorkflowCreationResult workflowResult = workflowService.createWorkflowInstance(
+                    dependencyTemplate.getId(), employeeDetails, null, testUser.getId());
+
+            // Act: First assignment - only task1 should be assigned
+            List<TaskAssignmentResult> firstRound = workflowService.assignTasksForWorkflow(workflowResult.getWorkflowInstanceId());
+
+            // Assert: Only task1 assigned (no dependencies)
+            assertThat(firstRound).hasSize(1);
+            assertThat(firstRound.get(0).getTaskName()).isEqualTo("First Task");
+
+            // Complete task1
+            List<TaskInstance> allTasks = taskInstanceRepository
+                    .findByWorkflowInstanceId(workflowResult.getWorkflowInstanceId());
+            TaskInstance task1Instance = allTasks.stream()
+                    .filter(t -> t.getTaskName().equals("First Task"))
+                    .findFirst().orElseThrow();
+            task1Instance.setStatus(TaskStatus.COMPLETED);
+            taskInstanceRepository.save(task1Instance);
+
+            // Act: Second assignment - now task2 should be assignable
+            List<TaskAssignmentResult> secondRound = workflowService.assignTasksForWorkflow(workflowResult.getWorkflowInstanceId());
+
+            // Assert: Task2 now assigned
+            assertThat(secondRound).hasSize(1);
+            assertThat(secondRound.get(0).getTaskName()).isEqualTo("Second Task");
+        }
+
+        @Test
+        @DisplayName("Should be idempotent - calling multiple times doesn't cause errors or duplicates")
+        void shouldBeIdempotent() {
+            // Act: Assign tasks first time
+            List<TaskAssignmentResult> firstCall = workflowService.assignTasksForWorkflow(testWorkflowInstance.getId());
+            assertThat(firstCall).hasSize(3);
+
+            // Act: Assign tasks second time
+            List<TaskAssignmentResult> secondCall = workflowService.assignTasksForWorkflow(testWorkflowInstance.getId());
+
+            // Assert: No new assignments on second call
+            assertThat(secondCall).isEmpty();
+
+            // Verify database still has only 3 assigned tasks
+            List<TaskInstance> allTasks = taskInstanceRepository
+                    .findByWorkflowInstanceId(testWorkflowInstance.getId());
+            assertThat(allTasks).hasSize(3);
+            assertThat(allTasks).allMatch(task -> task.getStatus() == TaskStatus.IN_PROGRESS);
+        }
+
+        @Test
+        @DisplayName("Should update workflow status to IN_PROGRESS and create state history")
+        void shouldUpdateWorkflowStatusOnFirstAssignment() {
+            // Verify initial status
+            assertThat(testWorkflowInstance.getStatus()).isEqualTo(WorkflowStatus.INITIATED);
+
+            // Act
+            List<TaskAssignmentResult> results = workflowService.assignTasksForWorkflow(testWorkflowInstance.getId());
+
+            // Assert: Workflow status updated
+            WorkflowInstance updatedWorkflow = workflowInstanceRepository.findById(testWorkflowInstance.getId())
+                    .orElseThrow();
+            assertThat(updatedWorkflow.getStatus()).isEqualTo(WorkflowStatus.IN_PROGRESS);
+
+            // Verify state history created
+            List<WorkflowStateHistory> history = workflowStateHistoryRepository
+                    .findByWorkflowInstanceIdOrderByChangedAtDesc(testWorkflowInstance.getId());
+
+            // Should have 2 entries: initial (INITIATED) + transition to IN_PROGRESS
+            assertThat(history).hasSizeGreaterThanOrEqualTo(2);
+
+            WorkflowStateHistory latestHistory = history.get(0);
+            assertThat(latestHistory.getPreviousStatus()).isEqualTo(WorkflowStatus.INITIATED);
+            assertThat(latestHistory.getNewStatus()).isEqualTo(WorkflowStatus.IN_PROGRESS);
+            assertThat(latestHistory.getNotes()).contains("first task assignment");
+        }
+
+        @Test
+        @DisplayName("Should not update workflow status if tasks already assigned")
+        void shouldNotUpdateWorkflowStatusIfAlreadyHasAssignments() {
+            // Arrange: Assign tasks first time
+            workflowService.assignTasksForWorkflow(testWorkflowInstance.getId());
+
+            // Get history count after first assignment
+            List<WorkflowStateHistory> historyAfterFirst = workflowStateHistoryRepository
+                    .findByWorkflowInstanceIdOrderByChangedAtDesc(testWorkflowInstance.getId());
+            int firstHistoryCount = historyAfterFirst.size();
+
+            // Complete one task and create a new one
+            List<TaskInstance> tasks = taskInstanceRepository
+                    .findByWorkflowInstanceId(testWorkflowInstance.getId());
+            tasks.get(0).setStatus(TaskStatus.COMPLETED);
+            taskInstanceRepository.save(tasks.get(0));
+
+            // Act: Call assign again (idempotent)
+            workflowService.assignTasksForWorkflow(testWorkflowInstance.getId());
+
+            // Assert: No new state history entry
+            List<WorkflowStateHistory> historyAfterSecond = workflowStateHistoryRepository
+                    .findByWorkflowInstanceIdOrderByChangedAtDesc(testWorkflowInstance.getId());
+            assertThat(historyAfterSecond).hasSize(firstHistoryCount);
+        }
+
+        @Test
+        @DisplayName("Should handle workflow with no eligible users gracefully")
+        void shouldHandleNoEligibleUsers() {
+            // Arrange: Deactivate all users
+            hrUser1.setIsActive(false);
+            hrUser2.setIsActive(false);
+            techUser.setIsActive(false);
+            managerUser.setIsActive(false);
+            userRepository.saveAll(List.of(hrUser1, hrUser2, techUser, managerUser));
+
+            // Act
+            List<TaskAssignmentResult> results = workflowService.assignTasksForWorkflow(testWorkflowInstance.getId());
+
+            // Assert: No tasks assigned (no active users)
+            assertThat(results).isEmpty();
+
+            // Verify database: All tasks still NOT_STARTED
+            List<TaskInstance> allTasks = taskInstanceRepository
+                    .findByWorkflowInstanceId(testWorkflowInstance.getId());
+            assertThat(allTasks).allMatch(task -> task.getStatus() == TaskStatus.NOT_STARTED);
+            assertThat(allTasks).allMatch(task -> task.getAssignedUserId() == null);
+        }
+
+        @Test
+        @DisplayName("Should throw exception when workflow not found")
+        void shouldThrowExceptionWhenWorkflowNotFound() {
+            // Arrange
+            UUID nonExistentWorkflowId = UUID.randomUUID();
+
+            // Act & Assert
+            assertThatThrownBy(() ->
+                    workflowService.assignTasksForWorkflow(nonExistentWorkflowId)
+            )
+                    .isInstanceOf(ResourceNotFoundException.class)
+                    .hasMessageContaining("Workflow instance not found");
+        }
+
+        @Test
+        @DisplayName("End-to-end: Create workflow, assign tasks, verify complete database state")
+        void endToEndWorkflowCreationAndAssignment() {
+            // Arrange: Create fresh workflow
+            EmployeeDetails employeeDetails = new EmployeeDetails();
+            employeeDetails.setEmployeeName("E2E Test Employee");
+            employeeDetails.setEmployeeEmail("e2e@test.com");
+            employeeDetails.setEmployeeRole("Engineer");
+
+            Map<String, Object> customFields = new HashMap<>();
+            customFields.put("department", "Engineering");
+            customFields.put("location", "Remote");
+
+            // Act 1: Create workflow
+            WorkflowCreationResult creationResult = workflowService.createWorkflowInstance(
+                    testTemplate.getId(), employeeDetails, customFields, testUser.getId());
+
+            assertThat(creationResult.getWorkflowInstanceId()).isNotNull();
+            assertThat(creationResult.getTotalTasks()).isEqualTo(3);
+
+            // Verify workflow created with INITIATED status
+            WorkflowInstance workflow = workflowInstanceRepository.findById(creationResult.getWorkflowInstanceId())
+                    .orElseThrow();
+            assertThat(workflow.getStatus()).isEqualTo(WorkflowStatus.INITIATED);
+            assertThat(workflow.getEmployeeName()).isEqualTo("E2E Test Employee");
+
+            // Verify tasks created with NOT_STARTED status
+            List<TaskInstance> tasksBeforeAssignment = taskInstanceRepository
+                    .findByWorkflowInstanceId(workflow.getId());
+            assertThat(tasksBeforeAssignment).hasSize(3);
+            assertThat(tasksBeforeAssignment).allMatch(t -> t.getStatus() == TaskStatus.NOT_STARTED);
+            assertThat(tasksBeforeAssignment).allMatch(t -> t.getAssignedUserId() == null);
+
+            // Act 2: Assign tasks
+            List<TaskAssignmentResult> assignmentResults = workflowService.assignTasksForWorkflow(workflow.getId());
+
+            assertThat(assignmentResults).hasSize(3);
+
+            // Verify workflow status updated to IN_PROGRESS
+            WorkflowInstance updatedWorkflow = workflowInstanceRepository.findById(workflow.getId())
+                    .orElseThrow();
+            assertThat(updatedWorkflow.getStatus()).isEqualTo(WorkflowStatus.IN_PROGRESS);
+
+            // Verify all tasks assigned with IN_PROGRESS status
+            List<TaskInstance> tasksAfterAssignment = taskInstanceRepository
+                    .findByWorkflowInstanceId(workflow.getId());
+            assertThat(tasksAfterAssignment).hasSize(3);
+            assertThat(tasksAfterAssignment).allMatch(t -> t.getStatus() == TaskStatus.IN_PROGRESS);
+            assertThat(tasksAfterAssignment).allMatch(t -> t.getAssignedUserId() != null);
+            assertThat(tasksAfterAssignment).allMatch(t -> t.getDueDate() != null);
+
+            // Verify correct role assignments
+            TaskInstance hrTask = tasksAfterAssignment.stream()
+                    .filter(t -> t.getTaskName().equals("HR Setup"))
+                    .findFirst().orElseThrow();
+            User assignedHrUser = userRepository.findById(hrTask.getAssignedUserId()).orElseThrow();
+            assertThat(assignedHrUser.getRole()).isEqualTo(UserRole.HR_ADMIN);
+
+            TaskInstance techTask = tasksAfterAssignment.stream()
+                    .filter(t -> t.getTaskName().equals("IT Setup"))
+                    .findFirst().orElseThrow();
+            User assignedTechUser = userRepository.findById(techTask.getAssignedUserId()).orElseThrow();
+            assertThat(assignedTechUser.getRole()).isEqualTo(UserRole.TECH_SUPPORT);
+
+            TaskInstance managerTask = tasksAfterAssignment.stream()
+                    .filter(t -> t.getTaskName().equals("Manager Orientation"))
+                    .findFirst().orElseThrow();
+            User assignedManagerUser = userRepository.findById(managerTask.getAssignedUserId()).orElseThrow();
+            assertThat(assignedManagerUser.getRole()).isEqualTo(UserRole.LINE_MANAGER);
+
+            // Verify state history
+            List<WorkflowStateHistory> history = workflowStateHistoryRepository
+                    .findByWorkflowInstanceIdOrderByChangedAtDesc(workflow.getId());
+            assertThat(history).hasSizeGreaterThanOrEqualTo(2);
+
+            // Verify custom fields preserved
+            assertThat(updatedWorkflow.getCustomFieldValues()).containsEntry("department", "Engineering");
+            assertThat(updatedWorkflow.getCustomFieldValues()).containsEntry("location", "Remote");
         }
     }
 }

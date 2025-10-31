@@ -50,4 +50,17 @@ public interface TaskInstanceRepository extends JpaRepository<TaskInstance, UUID
      * Used for conditional logic - only show tasks that should be visible to users.
      */
     List<TaskInstance> findByWorkflowInstanceIdAndIsVisible(UUID workflowInstanceId, Boolean isVisible);
+
+    /**
+     * Count tasks assigned to a user with a specific status.
+     * Used for load balancing - find the user with the fewest IN_PROGRESS tasks.
+     * Leverages composite index (assigned_user_id, status) for efficient counting.
+     */
+    Long countByAssignedUserIdAndStatus(UUID assignedUserId, TaskStatus status);
+
+    /**
+     * Find all tasks for a workflow instance ordered by sequence.
+     * Used for dependency checking during task assignment - ensures tasks are processed in correct order.
+     */
+    List<TaskInstance> findByWorkflowInstanceIdOrderBySequenceOrder(UUID workflowInstanceId);
 }

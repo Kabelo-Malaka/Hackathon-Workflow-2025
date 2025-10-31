@@ -478,3 +478,23 @@ databaseChangeLog:
               DROP INDEX IF EXISTS idx_workflow_state_history_workflow_changed_at;
               DROP INDEX IF EXISTS idx_workflow_state_history_changed_at;
               DROP INDEX IF EXISTS idx_workflow_state_history_workflow_instance_id;
+
+  # Story 3.3: Task Assignment & Routing Logic
+
+  # Changeset 017: Add sequence_order to task_instances for ordered task retrieval
+  - changeSet:
+      id: 3-3-1-add-sequence-order-to-task-instances
+      author: james-developer
+      comment: "Add sequence_order column to task_instances for dependency checking and ordered task assignment"
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE task_instances
+              ADD COLUMN sequence_order INTEGER NOT NULL DEFAULT 0;
+
+              CREATE INDEX idx_task_instances_workflow_sequence ON task_instances(workflow_instance_id, sequence_order);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_task_instances_workflow_sequence;
+              ALTER TABLE task_instances DROP COLUMN IF EXISTS sequence_order;

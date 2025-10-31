@@ -50,6 +50,9 @@ public class TaskInstance {
     @Column(name = "task_name", nullable = false, length = 255)
     private String taskName;
 
+    @Column(name = "sequence_order", nullable = false)
+    private Integer sequenceOrder;
+
     @Column(name = "assigned_user_id")
     private UUID assignedUserId;
 
