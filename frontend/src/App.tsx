@@ -5,6 +5,7 @@ import { CircularProgress, Box } from '@mui/material';
 import { LoginPage } from './components/auth/LoginPage';
 import { DashboardPage } from './components/dashboard/DashboardPage';
 import { UserManagementPage } from './components/users/UserManagementPage';
+import { TemplateLibraryPage } from './components/templates/TemplateLibraryPage';
 import { TemplateBuilderPage } from './components/templates/TemplateBuilderPage';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
 import { AppLayout } from './components/common/AppLayout';
@@ -61,6 +62,16 @@ function App() {
             <ProtectedRoute>
               <AppLayout>
                 <UserManagementPage />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/templates"
+          element={
+            <ProtectedRoute>
+              <AppLayout>
+                <TemplateLibraryPage />
               </AppLayout>
             </ProtectedRoute>
           }
